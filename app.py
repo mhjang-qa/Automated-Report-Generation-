@@ -561,20 +561,39 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path == "/api/health":
+            json_response(self, 200, {"ok": True, "status": "ready"})
+            return
         if path == "/":
-            self.serve_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+            self.serve_file(
+                STATIC_DIR / "index.html",
+                "text/html; charset=utf-8",
+                cache_control="public, max-age=60",
+            )
             return
         if path == "/logding" or path == "/logding/":
-            self.serve_file(LOADING_DIR / "index.html", "text/html; charset=utf-8")
+            self.serve_file(
+                LOADING_DIR / "index.html",
+                "text/html; charset=utf-8",
+                cache_control="public, max-age=300",
+            )
             return
         if path.startswith("/logding/"):
             loading_path = (LOADING_DIR / path.removeprefix("/logding/")).resolve()
             if LOADING_DIR in loading_path.parents and loading_path.exists() and loading_path.is_file():
-                self.serve_file(loading_path, self.content_type_for(loading_path))
+                self.serve_file(
+                    loading_path,
+                    self.content_type_for(loading_path),
+                    cache_control="public, max-age=300",
+                )
                 return
         static_path = (STATIC_DIR / path.lstrip("/")).resolve()
         if STATIC_DIR in static_path.parents and static_path.exists() and static_path.is_file():
-            self.serve_file(static_path, self.content_type_for(static_path))
+            self.serve_file(
+                static_path,
+                self.content_type_for(static_path),
+                cache_control="public, max-age=60",
+            )
             return
         json_response(self, 404, {"ok": False, "message": "요청한 페이지를 찾을 수 없습니다."})
 
@@ -601,11 +620,11 @@ class AppHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             json_response(self, 500, {"ok": False, "message": "처리 중 오류가 발생했습니다. 서버 로그를 확인해 주세요."})
 
-    def serve_file(self, path, content_type):
+    def serve_file(self, path, content_type, cache_control="no-store"):
         body = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

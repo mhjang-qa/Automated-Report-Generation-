@@ -36,7 +36,8 @@ const el = {
   notionPageLink: document.querySelector("#notionPageLink"),
 };
 
-const LOADING_DURATION_MS = 13500;
+const MIN_LOADING_DURATION_MS = 13500;
+const HEALTH_POLL_INTERVAL_MS = 1500;
 
 function showView(view) {
   el.loadingView.classList.toggle("hidden", view !== "loading");
@@ -52,6 +53,10 @@ function showView(view) {
 
 function completeLoading() {
   showView("login");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function setBusy(isBusy, phase = "대기 중") {
@@ -106,6 +111,34 @@ async function apiPost(path, payload) {
     throw new Error(data.message || "요청 처리에 실패했습니다.");
   }
   return data;
+}
+
+async function waitForBackendReady() {
+  while (true) {
+    try {
+      const res = await fetch("/api/health", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        return;
+      }
+    } catch (error) {
+      console.debug("Backend is not ready yet.", error);
+    }
+    await delay(HEALTH_POLL_INTERVAL_MS);
+  }
+}
+
+async function bootApp() {
+  showView("loading");
+  await Promise.all([delay(MIN_LOADING_DURATION_MS), waitForBackendReady()]);
+  if (sessionStorage.getItem("arg_authenticated") === "true") {
+    showView("app");
+    return;
+  }
+  completeLoading();
 }
 
 async function login(event) {
@@ -255,12 +288,4 @@ el.notionUrl.addEventListener("keydown", (event) => {
 });
 
 syncButtons();
-
-showView("loading");
-window.setTimeout(() => {
-  if (sessionStorage.getItem("arg_authenticated") === "true") {
-    showView("app");
-    return;
-  }
-  completeLoading();
-}, LOADING_DURATION_MS);
+bootApp();
