@@ -1,0 +1,81 @@
+# Automated Report Generation
+
+노션 티켓 링크를 입력하면 티켓 내용을 읽고 Gemini로 작업 내용을 요약한 뒤, 지정된 노션 DB에 저장합니다. 저장된 요약을 기반으로 테스트 케이스 Markdown Table을 생성하고 같은 노션 페이지 하단에 업로드할 수 있습니다.
+
+## 실행 방법
+
+```bash
+python3 app.py
+```
+
+브라우저에서 `http://127.0.0.1:8000`으로 접속합니다.
+
+포트를 바꾸려면 다음처럼 실행합니다.
+
+```bash
+PORT=8010 python3 app.py
+```
+
+## 환경변수
+
+`.env` 파일 또는 셸 환경변수로 설정합니다.
+
+```bash
+NOTION_TOKEN=secret_xxx
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.0-flash
+NOTION_TARGET_DB_URL=https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb
+```
+
+필수:
+
+- `NOTION_TOKEN`: Notion Integration 토큰
+- `GEMINI_API_KEY`: Gemini API Key
+
+선택:
+
+- `GEMINI_MODEL`: 기본값 `gemini-2.0-flash`
+- `NOTION_TARGET_DB_URL`: 요약 페이지를 생성할 대상 DB URL
+- `NOTION_TARGET_DATABASE_ID`: DB ID를 직접 지정할 때 사용하며, 이 값이 있으면 `NOTION_TARGET_DB_URL`보다 우선합니다.
+- `PORT`: 웹 서버 포트, 기본값 `8000`
+
+## Notion 설정
+
+1. Notion Integration을 생성하고 `NOTION_TOKEN`에 토큰을 설정합니다.
+2. 원본 티켓 페이지와 대상 DB를 해당 Integration에 공유합니다.
+3. 대상 DB URL은 기본 요구사항의 DB URL을 사용합니다. 다른 DB를 쓰려면 `NOTION_TARGET_DB_URL` 또는 `NOTION_TARGET_DATABASE_ID`를 설정합니다.
+
+대상 DB에 아래 속성이 없으면 서버가 자동으로 추가합니다.
+
+- `원본 노션 링크`: URL
+- `요약 상태`: Select
+- `생성 일시`: Date
+- `TC 생성 여부`: Checkbox
+
+DB의 제목 속성은 Notion DB에 기본으로 존재하는 Title 속성을 자동 탐색해 사용합니다.
+
+## 사용 순서
+
+1. 웹 화면에 노션 티켓 링크를 입력합니다.
+2. `분석 요약`을 눌러 티켓 본문 조회와 Gemini 요약 생성을 실행합니다.
+3. 결과를 확인한 뒤 `노션 등록`을 눌러 대상 DB에 신규 페이지를 생성합니다.
+4. `TC 생성하기`를 눌러 Markdown Table 형식의 테스트 케이스를 생성합니다.
+5. `TC 업로드`를 눌러 생성된 TC를 저장된 노션 페이지의 요약 콜아웃 하단에 추가합니다.
+
+## 오류 처리
+
+화면에는 사용자용 메시지를 표시하고, 상세 오류는 서버 콘솔에 기록합니다.
+
+- 노션 링크 미입력 또는 형식 오류
+- 노션 페이지 접근 실패 또는 본문 없음
+- `NOTION_TOKEN`, `GEMINI_API_KEY` 누락
+- Gemini API 오류, 쿼터 초과, 응답 형식 오류
+- 대상 노션 DB 저장 실패
+- TC 생성 또는 업로드 실패
+
+## 구현 메모
+
+- 외부 패키지 설치 없이 Python 표준 라이브러리만 사용합니다.
+- Notion API는 `2022-06-28` 버전으로 호출합니다.
+- TC는 Notion table block 대신 Markdown 코드 블록으로 업로드해 표 구조가 깨지지 않도록 했습니다.
+- 민감정보는 코드에 하드코딩하지 않고 환경변수에서만 읽습니다.

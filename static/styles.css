@@ -1,0 +1,279 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --ink: #1f2933;
+  --muted: #697586;
+  --line: #d8dee8;
+  --accent: #1769aa;
+  --accent-dark: #0f4f86;
+  --good: #0f7b45;
+  --bad: #b42318;
+  --warn-bg: #fff7ed;
+  --bad-bg: #fff1f0;
+  --good-bg: #eefbf3;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  width: min(1440px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 17px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.topbar p,
+.meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.phase {
+  min-width: 96px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.phase.busy {
+  border-color: #f2c94c;
+  background: var(--warn-bg);
+  color: #8a5a00;
+}
+
+.phase.done {
+  border-color: #a7dfbd;
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.phase.error {
+  border-color: #ffb4ab;
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.input-panel {
+  margin-bottom: 18px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.url-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 13px;
+  color: var(--ink);
+  background: #fff;
+}
+
+input:focus {
+  outline: 3px solid rgba(23, 105, 170, 0.18);
+  border-color: var(--accent);
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.primary:not(:disabled):hover {
+  background: var(--accent-dark);
+}
+
+.ghost {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+.ghost:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.message {
+  min-height: 24px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.message.error {
+  color: var(--bad);
+}
+
+.message.success {
+  color: var(--good);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.preview {
+  width: 100%;
+  min-height: 480px;
+  max-height: 68vh;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview.empty {
+  color: #8792a2;
+}
+
+.link-panel {
+  margin-top: 18px;
+}
+
+.link-panel a {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.hidden {
+  display: none;
+}
+
+@media (max-width: 920px) {
+  .shell {
+    width: min(100% - 24px, 720px);
+    padding: 20px 0;
+  }
+
+  .topbar,
+  .panel-head {
+    display: block;
+  }
+
+  .phase,
+  .actions {
+    margin-top: 12px;
+  }
+
+  .url-row,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  .preview {
+    min-height: 320px;
+    max-height: none;
+  }
+}

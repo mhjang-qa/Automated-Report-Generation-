@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notion Ticket Analyzer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>Notion Ticket Analyzer</h1>
+          <p>노션 티켓을 읽어 요약하고 테스트 케이스를 생성합니다.</p>
+        </div>
+        <div id="phaseBadge" class="phase">대기 중</div>
+      </section>
+
+      <section class="panel input-panel">
+        <label for="notionUrl">노션 티켓 링크</label>
+        <div class="url-row">
+          <input id="notionUrl" type="url" placeholder="https://www.notion.so/..." autocomplete="off" />
+          <button id="analyzeBtn" class="primary">분석 요약</button>
+        </div>
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>요약 결과</h2>
+              <span id="summaryMeta" class="meta"></span>
+            </div>
+            <div class="actions">
+              <button id="copySummaryBtn" class="ghost" disabled>복사</button>
+              <button id="registerBtn" class="primary" disabled>노션 등록</button>
+            </div>
+          </div>
+          <pre id="summaryPreview" class="preview empty">요약 결과가 여기에 표시됩니다.</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>테스트 케이스</h2>
+              <span id="tcMeta" class="meta"></span>
+            </div>
+            <div class="actions">
+              <button id="copyTcBtn" class="ghost" disabled>복사</button>
+              <button id="generateTcBtn" class="primary" disabled>TC 생성하기</button>
+              <button id="uploadTcBtn" class="primary" disabled>TC 업로드</button>
+            </div>
+          </div>
+          <pre id="tcPreview" class="preview empty">TC 결과가 여기에 표시됩니다.</pre>
+        </article>
+      </section>
+
+      <section id="linkPanel" class="panel link-panel hidden">
+        <h2>노션 저장 페이지</h2>
+        <a id="notionPageLink" href="#" target="_blank" rel="noreferrer"></a>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
