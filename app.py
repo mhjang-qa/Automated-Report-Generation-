@@ -588,7 +588,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), AppHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), AppHandler)
     print(f"Automated Report Generation running at http://127.0.0.1:{port}")
     server.serve_forever()
 
