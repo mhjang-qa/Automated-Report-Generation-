@@ -1,9 +1,11 @@
 import {
   Scene, WebGLRenderer, PerspectiveCamera, Color, Group, Box3, Vector3,
+  Quaternion,
   Mesh, ExtrudeGeometry, MeshStandardMaterial,
   InstancedMesh, BoxGeometry, Object3D,
   AmbientLight, DirectionalLight,
   ShaderMaterial, SphereGeometry, BackSide,
+  CanvasTexture, Sprite, SpriteMaterial,
 } from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { animate, createTimeline, createTimer, stagger, utils, cubicBezier, linear } from 'animejs';
@@ -185,6 +187,41 @@ renderer.setPixelRatio(devicePixelRatio || 1);
 document.body.appendChild(renderer.domElement);
 renderer.domElement.style.opacity = '0';
 
+const finalBrand = document.querySelector('#final-brand');
+if (finalBrand) finalBrand.style.opacity = '0';
+
+const titleCanvas = document.createElement('canvas');
+titleCanvas.width = 2048;
+titleCanvas.height = 512;
+const titleCtx = titleCanvas.getContext('2d');
+titleCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height);
+titleCtx.textAlign = 'center';
+titleCtx.textBaseline = 'middle';
+titleCtx.font = 'italic 900 270px Arial Black, Impact, Arial, sans-serif';
+titleCtx.lineJoin = 'round';
+titleCtx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+titleCtx.shadowBlur = 28;
+titleCtx.shadowOffsetX = 24;
+titleCtx.shadowOffsetY = 24;
+titleCtx.strokeStyle = 'rgba(118, 124, 142, 0.82)';
+titleCtx.lineWidth = 16;
+titleCtx.strokeText('Silce-QA', titleCanvas.width / 2, titleCanvas.height / 2 + 10);
+titleCtx.fillStyle = '#f7f8fb';
+titleCtx.fillText('Silce-QA', titleCanvas.width / 2, titleCanvas.height / 2 + 10);
+const finalTitleTexture = new CanvasTexture(titleCanvas);
+const finalTitleMaterial = new SpriteMaterial({
+  map: finalTitleTexture,
+  transparent: true,
+  opacity: 0,
+  depthTest: false,
+  depthWrite: false,
+});
+const finalTitle = new Sprite(finalTitleMaterial);
+finalTitle.position.set(0, 0, 0);
+finalTitle.scale.set(13.5, 3.35, 1);
+finalTitle.renderOrder = 999;
+scene.add(finalTitle);
+
 addEventListener('resize', () => {
   const aspect = innerWidth / innerHeight;
   camera.aspect = aspect;
@@ -238,12 +275,39 @@ const DEG2RAD = Math.PI / 180;
 const FLATTEN_BASE_FOV = camera.fov;
 const FLATTEN_DIST_NUM = camera.position.z * Math.tan(FLATTEN_BASE_FOV * 0.5 * DEG2RAD);
 const flattenDezoom = { value: 1 };
+const loadingStartedAt = performance.now();
+const FINAL_TITLE_LOOP_MS = 14500;
+const FINAL_TITLE_IN_MS = 10800;
+const FINAL_TITLE_HOLD_MS = 11200;
+const FINAL_TITLE_OUT_MS = 14000;
+const titleCameraPosition = new Vector3();
+const titleCameraDirection = new Vector3();
+const titleCameraQuaternion = new Quaternion();
 
 // Render loop: hold the framing as the fov flattens, then draw the scene
 createTimer({
   priority: 0,
   onUpdate: () => {
     camera.position.z = FLATTEN_DIST_NUM * flattenDezoom.value / Math.tan(camera.fov * 0.5 * DEG2RAD);
+    const cycleTime = (performance.now() - loadingStartedAt) % FINAL_TITLE_LOOP_MS;
+    let titleOpacity = 0;
+    if (cycleTime >= FINAL_TITLE_IN_MS && cycleTime < FINAL_TITLE_HOLD_MS) {
+      titleOpacity = (cycleTime - FINAL_TITLE_IN_MS) / (FINAL_TITLE_HOLD_MS - FINAL_TITLE_IN_MS);
+    } else if (cycleTime >= FINAL_TITLE_HOLD_MS && cycleTime < FINAL_TITLE_OUT_MS) {
+      titleOpacity = 1;
+    } else if (cycleTime >= FINAL_TITLE_OUT_MS) {
+      titleOpacity = Math.max(0, 1 - (cycleTime - FINAL_TITLE_OUT_MS) / (FINAL_TITLE_LOOP_MS - FINAL_TITLE_OUT_MS));
+    }
+    finalTitleMaterial.opacity = titleOpacity;
+    finalTitle.visible = titleOpacity > 0.01;
+    if (finalTitle.visible) {
+      camera.getWorldPosition(titleCameraPosition);
+      camera.getWorldDirection(titleCameraDirection);
+      camera.getWorldQuaternion(titleCameraQuaternion);
+      finalTitle.position.copy(titleCameraPosition).add(titleCameraDirection.multiplyScalar(18));
+      finalTitle.quaternion.copy(titleCameraQuaternion);
+      finalTitle.scale.set(11.2, 2.8, 1);
+    }
     renderer.render(scene, camera);
   },
 });
@@ -632,6 +696,12 @@ const tl = createTimeline({
     intensity: [{ to: 3, duration: 300 }, { to: 1, duration: 700, delay: 1050 }],
     duration: 240, ease: 'inOut(1.8042)',
   }, 'POP+=1650')
+  .add(renderer.domElement, {
+    id: 'dim original logo',
+    opacity: 0.28,
+    duration: 360,
+    ease: 'inOut(2)',
+  }, 'POP+=1500')
   .add(camera, {
     id: 'outro depth',
     // Re-add perspective so the meshes flying at the camera read with depth.
