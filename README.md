@@ -27,6 +27,8 @@ GEMINI_API_KEY_2=your_fallback_gemini_api_key
 GEMINI_MODEL=gemini-2.0-flash
 NOTION_TARGET_DB_URL=https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb
 APP_LOGIN_PASSWORD=optional_password
+SUMMARY_CONTENT_LIMIT=12000
+TC_SOURCE_LIMIT=6000
 ```
 
 필수:
@@ -41,6 +43,8 @@ APP_LOGIN_PASSWORD=optional_password
 - `NOTION_TARGET_DB_URL`: 요약 페이지를 생성할 대상 DB URL
 - `NOTION_TARGET_DATABASE_ID`: DB ID를 직접 지정할 때 사용하며, 이 값이 있으면 `NOTION_TARGET_DB_URL`보다 우선합니다.
 - `APP_LOGIN_PASSWORD`: 설정하면 로그인 화면에서 해당 비밀번호를 입력해야 합니다. 미설정 시 로그인 버튼으로 바로 진입합니다.
+- `SUMMARY_CONTENT_LIMIT`: 요약 생성 시 Gemini에 전달할 노션 본문 최대 문자 수, 기본값 `12000`
+- `TC_SOURCE_LIMIT`: TC 생성 시 원문 참고로 전달할 최대 문자 수, 기본값 `6000`
 - `PORT`: 웹 서버 포트, 기본값 `8000`
 
 ## Notion 설정

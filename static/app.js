@@ -9,6 +9,7 @@ const state = {
   tcMarkdown: "",
   busy: false,
   loginBusy: false,
+  isAnalyzing: false,
 };
 
 const el = {
@@ -86,7 +87,7 @@ function showMessage(message, type = "") {
 }
 
 function syncButtons() {
-  const busy = state.busy;
+  const busy = state.busy || state.isAnalyzing;
   el.analyzeBtn.disabled = busy;
   el.registerBtn.disabled = busy || !state.summary;
   el.generateTcBtn.disabled = busy || !state.summary;
@@ -163,12 +164,17 @@ async function login(event) {
 }
 
 async function analyze() {
+  if (state.isAnalyzing) {
+    return;
+  }
   const url = el.notionUrl.value.trim();
   if (!url) {
     setError("노션 링크를 입력해 주세요.");
     return;
   }
+  state.isAnalyzing = true;
   setBusy(true, "분석 중");
+  el.analyzeBtn.disabled = true;
   showMessage("노션 페이지를 읽고 Gemini로 요약을 생성하는 중입니다.");
   try {
     const data = await apiPost("/api/analyze", { url });
@@ -189,6 +195,7 @@ async function analyze() {
     console.error(error);
     setError(error.message);
   } finally {
+    state.isAnalyzing = false;
     state.busy = false;
     syncButtons();
   }

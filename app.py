@@ -2,12 +2,15 @@
 import json
 import os
 import re
+import hashlib
 import sys
+import threading
 import time
 import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,6 +22,11 @@ LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
 NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_SUMMARY_CONTENT_LIMIT = 12000
+DEFAULT_TC_SOURCE_LIMIT = 6000
+GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
+ACTIVE_ANALYZE_LOCK = threading.Lock()
+ACTIVE_ANALYZE_KEYS = set()
 
 
 class UserFacingError(Exception):
@@ -71,6 +79,51 @@ def require_env(name, label):
     if not value:
         raise UserFacingError(f"{label} 환경변수가 설정되어 있지 않습니다.", 500)
     return value
+
+
+def env_int(name, default, minimum=1):
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"[Config] {name} must be an integer. Using default {default}.", file=sys.stderr)
+        return default
+    if value < minimum:
+        print(f"[Config] {name} must be >= {minimum}. Using default {default}.", file=sys.stderr)
+        return default
+    return value
+
+
+def log_event(request_id, message):
+    print(f"[request_id={request_id}] {message}", file=sys.stderr)
+
+
+def parse_gemini_error_body(body):
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return {"raw": body}
+    error = data.get("error") or {}
+    parsed = {
+        "status": error.get("status"),
+        "message": error.get("message"),
+        "code": error.get("code"),
+        "violations": [],
+    }
+    for detail in error.get("details", []) or []:
+        violations = detail.get("violations") or detail.get("quotaViolations") or []
+        for violation in violations:
+            parsed["violations"].append(
+                {
+                    "quotaMetric": violation.get("quotaMetric"),
+                    "quotaId": violation.get("quotaId"),
+                    "quotaDimensions": violation.get("quotaDimensions"),
+                    "quotaValue": violation.get("quotaValue"),
+                }
+            )
+    return parsed
 
 
 def extract_notion_id(url):
@@ -236,7 +289,7 @@ def fetch_ticket(url):
     return {"page_id": page_id, "title": title, "content": combined}
 
 
-def gemini_request(prompt, max_tokens=4096):
+def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
     primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
     api_keys = [("GEMINI_API_KEY", primary_key)]
     secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
@@ -257,8 +310,12 @@ def gemini_request(prompt, max_tokens=4096):
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ],
     }
-    last_error = None
-    quota_exhausted_keys = []
+    payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    log_event(
+        request_id,
+        f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} max_tokens={max_tokens} model={model}",
+    )
+    last_user_error = None
     for key_name, api_key in api_keys:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -267,45 +324,83 @@ def gemini_request(prompt, max_tokens=4096):
         for attempt in range(3):
             req = urllib.request.Request(
                 url,
-                data=json.dumps(payload).encode("utf-8"),
+                data=payload_bytes,
                 method="POST",
                 headers={"Content-Type": "application/json"},
             )
             try:
+                log_event(request_id, f"Gemini {operation} request key_label={key_name} attempt={attempt + 1}")
                 with urllib.request.urlopen(req, timeout=90) as resp:
+                    log_event(request_id, f"Gemini {operation} HTTP status={resp.status} key_label={key_name}")
                     data = json.loads(resp.read().decode("utf-8"))
-                parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                candidates = data.get("candidates") or []
+                log_event(request_id, f"Gemini {operation} response candidates={len(candidates)} key_label={key_name}")
+                if not candidates:
+                    log_event(request_id, f"Gemini {operation} no candidates response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
+                    raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
+                finish_reason = candidates[0].get("finishReason")
+                if finish_reason:
+                    log_event(request_id, f"Gemini {operation} finishReason={finish_reason} key_label={key_name}")
+                if finish_reason == "MAX_TOKENS":
+                    raise UserFacingError("Gemini 응답이 길이 제한으로 중단되었습니다. 입력 본문을 줄이거나 다시 시도해 주세요.", 502)
+                if finish_reason in {"SAFETY", "RECITATION"}:
+                    raise UserFacingError("Gemini 응답이 안전 정책 또는 인용 제한으로 중단되었습니다. 입력 내용을 조정해 다시 시도해 주세요.", 502)
+                parts = candidates[0].get("content", {}).get("parts", [])
                 text = "\n".join(part.get("text", "") for part in parts).strip()
                 if not text:
-                    print(f"[Gemini] empty response: {json.dumps(data, ensure_ascii=False)[:2000]}", file=sys.stderr)
+                    log_event(request_id, f"Gemini {operation} empty text response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
                     raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
                 if key_name != "GEMINI_API_KEY":
-                    print(f"[Gemini] request succeeded with fallback key {key_name}", file=sys.stderr)
+                    log_event(request_id, f"Gemini {operation} request succeeded with fallback key_label={key_name}")
                 return text
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")
-                print(f"[Gemini] {key_name} HTTP {exc.code}: {detail}", file=sys.stderr)
-                last_error = exc
+                retry_after = exc.headers.get("Retry-After")
+                log_event(request_id, f"Gemini {operation} HTTP status={exc.code} key_label={key_name} retry_after={retry_after}")
+                if exc.code == 429:
+                    parsed = parse_gemini_error_body(detail)
+                    log_event(request_id, f"Gemini {operation} 429 body={detail}")
+                    log_event(request_id, f"Gemini {operation} 429 parsed={json.dumps(parsed, ensure_ascii=False)}")
+                    last_user_error = UserFacingError(GEMINI_429_MESSAGE, 429)
+                    if len(api_keys) > 1 and key_name != api_keys[-1][0]:
+                        log_event(request_id, f"Gemini {operation} 429 failover from key_label={key_name} to next key")
+                        break
+                    raise last_user_error
                 if exc.code in (400, 401, 403):
                     raise UserFacingError(f"{key_name} 또는 Gemini 모델 설정을 확인해 주세요.", 502)
-                if exc.code == 429:
-                    quota_exhausted_keys.append(key_name)
+                last_user_error = UserFacingError("Gemini API 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
+                if exc.code == 503:
+                    if attempt < 2:
+                        sleep_s = 1.5 * (2 ** attempt)
+                        log_event(request_id, f"Gemini {operation} 503 retry key_label={key_name} sleep={sleep_s}")
+                        time.sleep(sleep_s)
+                        continue
                     if len(api_keys) > 1 and key_name != api_keys[-1][0]:
-                        print(f"[Gemini] {key_name} quota exceeded. Trying next configured key.", file=sys.stderr)
+                        log_event(request_id, f"Gemini {operation} 503 failover from key_label={key_name} to next key")
                         break
-                    raise UserFacingError("설정된 Gemini API Key의 쿼터가 모두 초과되었습니다. 잠시 후 다시 시도해 주세요.", 429)
+                raise last_user_error
             except urllib.error.URLError as exc:
-                print(f"[Gemini] {key_name} network error: {exc}", file=sys.stderr)
-                last_error = exc
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
-    if quota_exhausted_keys:
-        raise UserFacingError("설정된 Gemini API Key의 쿼터가 모두 초과되었습니다. 잠시 후 다시 시도해 주세요.", 429)
-    print(f"[Gemini] final failure: {last_error}", file=sys.stderr)
+                log_event(request_id, f"Gemini {operation} network error key_label={key_name}: {exc}")
+                last_user_error = UserFacingError("Gemini API에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.", 502)
+                if attempt < 2:
+                    sleep_s = 1.5 * (2 ** attempt)
+                    log_event(request_id, f"Gemini {operation} network retry key_label={key_name} sleep={sleep_s}")
+                    time.sleep(sleep_s)
+                    continue
+                if len(api_keys) > 1 and key_name != api_keys[-1][0]:
+                    log_event(request_id, f"Gemini {operation} network failover from key_label={key_name} to next key")
+                    break
+                raise last_user_error
+            except UserFacingError:
+                raise
+    if last_user_error:
+        raise last_user_error
     raise UserFacingError("Gemini 응답 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
 
 
 def build_summary_prompt(title, content):
+    content_limit = env_int("SUMMARY_CONTENT_LIMIT", DEFAULT_SUMMARY_CONTENT_LIMIT)
+    limited_content = content[:content_limit]
     return f"""
 너는 시니어 QA와 서비스 기획 리뷰어다. 기획서가 부족한 노션 티켓을 읽고 QA가 바로 이해할 수 있게 분석 요약을 작성한다.
 
@@ -343,11 +438,13 @@ def build_summary_prompt(title, content):
 {title}
 
 [티켓 내용]
-{content[:28000]}
+{limited_content}
 """.strip()
 
 
 def build_tc_prompt(title, summary, source_content):
+    source_limit = env_int("TC_SOURCE_LIMIT", DEFAULT_TC_SOURCE_LIMIT)
+    limited_source = source_content[:source_limit]
     return f"""
 너는 시니어 QA 리드다. 아래 티켓 요약을 기반으로 실제 실행 가능한 테스트 케이스를 작성한다.
 
@@ -371,7 +468,7 @@ def build_tc_prompt(title, summary, source_content):
 {summary}
 
 [원문 참고]
-{source_content[:12000]}
+{limited_source}
 """.strip()
 
 
@@ -514,27 +611,60 @@ def upload_tc(page_id, tc_markdown):
 
 
 def analyze_ticket(payload):
+    request_id = uuid.uuid4().hex[:12]
     source_url = (payload.get("url") or "").strip()
-    ticket = fetch_ticket(source_url)
-    summary = gemini_request(build_summary_prompt(ticket["title"], ticket["content"]), max_tokens=4096)
-    if "작업 내용 요약" not in summary or "검증 포인트" not in summary:
-        raise UserFacingError("요약 결과 파싱에 실패했습니다. 다시 시도해 주세요.", 502)
-    return {
-        "sourceUrl": source_url,
-        "sourcePageId": ticket["page_id"],
-        "title": ticket["title"],
-        "sourceContent": ticket["content"],
-        "summary": summary,
-    }
+    analyze_key = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+    log_event(request_id, f"/api/analyze start sourceUrl={source_url}")
+    with ACTIVE_ANALYZE_LOCK:
+        if analyze_key in ACTIVE_ANALYZE_KEYS:
+            log_event(request_id, f"/api/analyze duplicate blocked sourceUrl={source_url}")
+            raise UserFacingError("이미 동일한 노션 링크 분석이 진행 중입니다. 잠시 후 다시 확인해 주세요.", 409)
+        ACTIVE_ANALYZE_KEYS.add(analyze_key)
+    try:
+        ticket = fetch_ticket(source_url)
+        summary_limit = env_int("SUMMARY_CONTENT_LIMIT", DEFAULT_SUMMARY_CONTENT_LIMIT)
+        sent_content_length = min(len(ticket["content"]), summary_limit)
+        prompt = build_summary_prompt(ticket["title"], ticket["content"])
+        log_event(
+            request_id,
+            (
+                f"/api/analyze notion sourcePageId={ticket['page_id']} title={ticket['title']} "
+                f"content_length={len(ticket['content'])} sent_content_length={sent_content_length} "
+                f"prompt_length={len(prompt)}"
+            ),
+        )
+        summary = gemini_request(prompt, max_tokens=4096, request_id=request_id, operation="summary")
+        if "작업 내용 요약" not in summary or "검증 포인트" not in summary:
+            log_event(request_id, "summary parse failed: required headings missing")
+            raise UserFacingError("요약 결과 파싱에 실패했습니다. 다시 시도해 주세요.", 502)
+        log_event(request_id, f"/api/analyze success summary_length={len(summary)}")
+        return {
+            "requestId": request_id,
+            "sourceUrl": source_url,
+            "sourcePageId": ticket["page_id"],
+            "title": ticket["title"],
+            "sourceContent": ticket["content"],
+            "summary": summary,
+        }
+    finally:
+        with ACTIVE_ANALYZE_LOCK:
+            ACTIVE_ANALYZE_KEYS.discard(analyze_key)
 
 
 def create_tc(payload):
+    request_id = uuid.uuid4().hex[:12]
     title = (payload.get("title") or "노션 티켓").strip()
     summary = (payload.get("summary") or "").strip()
     source_content = (payload.get("sourceContent") or "").strip()
     if not summary:
         raise UserFacingError("먼저 분석 요약을 생성해 주세요.", 400)
-    tc = gemini_request(build_tc_prompt(title, summary, source_content), max_tokens=8192)
+    tc_limit = env_int("TC_SOURCE_LIMIT", DEFAULT_TC_SOURCE_LIMIT)
+    prompt = build_tc_prompt(title, summary, source_content)
+    log_event(
+        request_id,
+        f"/api/generate-tc title={title} source_content_length={len(source_content)} sent_source_length={min(len(source_content), tc_limit)} prompt_length={len(prompt)}",
+    )
+    tc = gemini_request(prompt, max_tokens=8192, request_id=request_id, operation="tc")
     return {"tcMarkdown": clean_markdown_table(tc)}
 
 
