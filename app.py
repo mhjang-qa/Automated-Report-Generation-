@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
+LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
 NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
@@ -534,6 +535,14 @@ def register_summary(payload):
     return create_summary_page(source_url, title, summary, False)
 
 
+def login(payload):
+    configured = os.environ.get("APP_LOGIN_PASSWORD", "")
+    password = str(payload.get("password") or "")
+    if configured and password != configured:
+        raise UserFacingError("비밀번호가 올바르지 않습니다.", 401)
+    return {"authenticated": True}
+
+
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -541,14 +550,17 @@ class AppHandler(BaseHTTPRequestHandler):
         if path == "/":
             self.serve_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
             return
+        if path == "/logding" or path == "/logding/":
+            self.serve_file(LOADING_DIR / "index.html", "text/html; charset=utf-8")
+            return
+        if path.startswith("/logding/"):
+            loading_path = (LOADING_DIR / path.removeprefix("/logding/")).resolve()
+            if LOADING_DIR in loading_path.parents and loading_path.exists() and loading_path.is_file():
+                self.serve_file(loading_path, self.content_type_for(loading_path))
+                return
         static_path = (STATIC_DIR / path.lstrip("/")).resolve()
         if STATIC_DIR in static_path.parents and static_path.exists() and static_path.is_file():
-            content_type = "text/plain; charset=utf-8"
-            if static_path.suffix == ".css":
-                content_type = "text/css; charset=utf-8"
-            elif static_path.suffix == ".js":
-                content_type = "application/javascript; charset=utf-8"
-            self.serve_file(static_path, content_type)
+            self.serve_file(static_path, self.content_type_for(static_path))
             return
         json_response(self, 404, {"ok": False, "message": "요청한 페이지를 찾을 수 없습니다."})
 
@@ -557,6 +569,8 @@ class AppHandler(BaseHTTPRequestHandler):
             payload = read_json_body(self)
             if self.path == "/api/analyze":
                 result = analyze_ticket(payload)
+            elif self.path == "/api/login":
+                result = login(payload)
             elif self.path == "/api/register-summary":
                 result = register_summary(payload)
             elif self.path == "/api/generate-tc":
@@ -581,6 +595,17 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def content_type_for(self, path):
+        if path.suffix == ".css":
+            return "text/css; charset=utf-8"
+        if path.suffix == ".js":
+            return "application/javascript; charset=utf-8"
+        if path.suffix == ".html":
+            return "text/html; charset=utf-8"
+        if path.suffix == ".svg":
+            return "image/svg+xml"
+        return "text/plain; charset=utf-8"
 
     def log_message(self, fmt, *args):
         print(f"[Web] {self.address_string()} {fmt % args}", file=sys.stderr)

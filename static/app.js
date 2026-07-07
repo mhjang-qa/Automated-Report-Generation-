@@ -8,9 +8,17 @@ const state = {
   notionPageUrl: "",
   tcMarkdown: "",
   busy: false,
+  loginBusy: false,
 };
 
 const el = {
+  loadingView: document.querySelector("#loadingView"),
+  loginView: document.querySelector("#loginView"),
+  appView: document.querySelector("#appView"),
+  loginForm: document.querySelector("#loginForm"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginBtn: document.querySelector("#loginBtn"),
+  loginMessage: document.querySelector("#loginMessage"),
   notionUrl: document.querySelector("#notionUrl"),
   analyzeBtn: document.querySelector("#analyzeBtn"),
   registerBtn: document.querySelector("#registerBtn"),
@@ -27,6 +35,24 @@ const el = {
   linkPanel: document.querySelector("#linkPanel"),
   notionPageLink: document.querySelector("#notionPageLink"),
 };
+
+const LOADING_DURATION_MS = 6200;
+
+function showView(view) {
+  el.loadingView.classList.toggle("hidden", view !== "loading");
+  el.loginView.classList.toggle("hidden", view !== "login");
+  el.appView.classList.toggle("hidden", view !== "app");
+  if (view === "login") {
+    el.loginPassword.focus();
+  }
+  if (view === "app") {
+    el.notionUrl.focus();
+  }
+}
+
+function completeLoading() {
+  showView("login");
+}
 
 function setBusy(isBusy, phase = "대기 중") {
   state.busy = isBusy;
@@ -80,6 +106,27 @@ async function apiPost(path, payload) {
     throw new Error(data.message || "요청 처리에 실패했습니다.");
   }
   return data;
+}
+
+async function login(event) {
+  event.preventDefault();
+  if (state.loginBusy) return;
+  state.loginBusy = true;
+  el.loginBtn.disabled = true;
+  el.loginMessage.textContent = "";
+  try {
+    await apiPost("/api/login", {
+      password: el.loginPassword.value,
+    });
+    sessionStorage.setItem("arg_authenticated", "true");
+    showView("app");
+  } catch (error) {
+    console.error(error);
+    el.loginMessage.textContent = error.message;
+  } finally {
+    state.loginBusy = false;
+    el.loginBtn.disabled = false;
+  }
 }
 
 async function analyze() {
@@ -202,8 +249,18 @@ el.generateTcBtn.addEventListener("click", generateTc);
 el.uploadTcBtn.addEventListener("click", uploadTc);
 el.copySummaryBtn.addEventListener("click", () => copyText(state.summary, "요약 결과"));
 el.copyTcBtn.addEventListener("click", () => copyText(state.tcMarkdown, "TC 결과"));
+el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyze();
 });
 
 syncButtons();
+
+showView("loading");
+window.setTimeout(() => {
+  if (sessionStorage.getItem("arg_authenticated") === "true") {
+    showView("app");
+    return;
+  }
+  completeLoading();
+}, LOADING_DURATION_MS);

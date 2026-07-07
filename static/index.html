@@ -7,7 +7,24 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
+    <section id="loadingView" class="loading-view" aria-label="로딩 화면">
+      <iframe title="Loading animation" src="/logding/" loading="eager"></iframe>
+    </section>
+
+    <section id="loginView" class="login-view hidden" aria-label="로그인 화면">
+      <form id="loginForm" class="login-panel">
+        <div>
+          <p class="login-kicker">Automated Report Generation</p>
+          <h1>로그인</h1>
+        </div>
+        <label for="loginPassword">비밀번호</label>
+        <input id="loginPassword" type="password" placeholder="비밀번호를 입력하세요" autocomplete="current-password" />
+        <button id="loginBtn" class="primary" type="submit">로그인</button>
+        <p id="loginMessage" class="login-message" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <main id="appView" class="shell hidden">
       <section class="topbar">
         <div>
           <h1>Notion Ticket Analyzer</h1>
