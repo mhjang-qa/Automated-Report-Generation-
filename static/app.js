@@ -37,11 +37,13 @@ const el = {
   notionPageLink: document.querySelector("#notionPageLink"),
 };
 
-const MIN_LOADING_DURATION_MS = 13500;
+const FLOOR_RISE_LOADING_DURATION_MS = 10200;
 const HEALTH_POLL_INTERVAL_MS = 1500;
 
 function showView(view) {
-  el.loadingView.classList.toggle("hidden", view !== "loading");
+  if (el.loadingView) {
+    el.loadingView.classList.toggle("hidden", view !== "loading");
+  }
   el.loginView.classList.toggle("hidden", view !== "login");
   el.appView.classList.toggle("hidden", view !== "app");
   if (view === "login") {
@@ -54,6 +56,17 @@ function showView(view) {
 
 function completeLoading() {
   showView("login");
+  destroyLoadingView();
+}
+
+function destroyLoadingView() {
+  if (!el.loadingView) return;
+  const iframe = el.loadingView.querySelector("iframe");
+  if (iframe) {
+    iframe.src = "about:blank";
+  }
+  el.loadingView.remove();
+  el.loadingView = null;
 }
 
 function delay(ms) {
@@ -134,11 +147,7 @@ async function waitForBackendReady() {
 
 async function bootApp() {
   showView("loading");
-  await Promise.all([delay(MIN_LOADING_DURATION_MS), waitForBackendReady()]);
-  if (sessionStorage.getItem("arg_authenticated") === "true") {
-    showView("app");
-    return;
-  }
+  await Promise.all([delay(FLOOR_RISE_LOADING_DURATION_MS), waitForBackendReady()]);
   completeLoading();
 }
 
