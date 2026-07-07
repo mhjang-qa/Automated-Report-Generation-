@@ -11,6 +11,21 @@ canvas {
     display: block;
 }
 
+.loading-brand {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    z-index: 2;
+    color: #ffffff;
+    font-family: Inter, Arial, sans-serif;
+    font-size: clamp(20px, 3vw, 36px);
+    font-weight: 800;
+    letter-spacing: 0;
+    text-align: center;
+    pointer-events: none;
+}
+
 #logo {
     display: none;
 }

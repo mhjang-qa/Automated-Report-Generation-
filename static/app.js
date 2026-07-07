@@ -36,7 +36,7 @@ const el = {
   notionPageLink: document.querySelector("#notionPageLink"),
 };
 
-const LOADING_DURATION_MS = 6200;
+const LOADING_DURATION_MS = 13500;
 
 function showView(view) {
   el.loadingView.classList.toggle("hidden", view !== "loading");
