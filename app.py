@@ -237,12 +237,12 @@ def fetch_ticket(url):
 
 
 def gemini_request(prompt, max_tokens=4096):
-    api_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
+    primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
+    api_keys = [("GEMINI_API_KEY", primary_key)]
+    secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
+    if secondary_key:
+        api_keys.append(("GEMINI_API_KEY_2", secondary_key))
     model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{urllib.parse.quote(model)}:generateContent?key={urllib.parse.quote(api_key)}"
-    )
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -258,35 +258,49 @@ def gemini_request(prompt, max_tokens=4096):
         ],
     }
     last_error = None
-    for attempt in range(3):
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            method="POST",
-            headers={"Content-Type": "application/json"},
+    quota_exhausted_keys = []
+    for key_name, api_key in api_keys:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{urllib.parse.quote(model)}:generateContent?key={urllib.parse.quote(api_key)}"
         )
-        try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-            text = "\n".join(part.get("text", "") for part in parts).strip()
-            if not text:
-                print(f"[Gemini] empty response: {json.dumps(data, ensure_ascii=False)[:2000]}", file=sys.stderr)
-                raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
-            return text
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            print(f"[Gemini] HTTP {exc.code}: {detail}", file=sys.stderr)
-            last_error = exc
-            if exc.code in (400, 401, 403):
-                raise UserFacingError("Gemini API Key 또는 모델 설정을 확인해 주세요.", 502)
-            if exc.code == 429:
-                raise UserFacingError("Gemini API 쿼터가 초과되었습니다. 잠시 후 다시 시도해 주세요.", 429)
-        except urllib.error.URLError as exc:
-            print(f"[Gemini] network error: {exc}", file=sys.stderr)
-            last_error = exc
-        if attempt < 2:
-            time.sleep(1.5 * (attempt + 1))
+        for attempt in range(3):
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                text = "\n".join(part.get("text", "") for part in parts).strip()
+                if not text:
+                    print(f"[Gemini] empty response: {json.dumps(data, ensure_ascii=False)[:2000]}", file=sys.stderr)
+                    raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
+                if key_name != "GEMINI_API_KEY":
+                    print(f"[Gemini] request succeeded with fallback key {key_name}", file=sys.stderr)
+                return text
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                print(f"[Gemini] {key_name} HTTP {exc.code}: {detail}", file=sys.stderr)
+                last_error = exc
+                if exc.code in (400, 401, 403):
+                    raise UserFacingError(f"{key_name} 또는 Gemini 모델 설정을 확인해 주세요.", 502)
+                if exc.code == 429:
+                    quota_exhausted_keys.append(key_name)
+                    if len(api_keys) > 1 and key_name != api_keys[-1][0]:
+                        print(f"[Gemini] {key_name} quota exceeded. Trying next configured key.", file=sys.stderr)
+                        break
+                    raise UserFacingError("설정된 Gemini API Key의 쿼터가 모두 초과되었습니다. 잠시 후 다시 시도해 주세요.", 429)
+            except urllib.error.URLError as exc:
+                print(f"[Gemini] {key_name} network error: {exc}", file=sys.stderr)
+                last_error = exc
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    if quota_exhausted_keys:
+        raise UserFacingError("설정된 Gemini API Key의 쿼터가 모두 초과되었습니다. 잠시 후 다시 시도해 주세요.", 429)
     print(f"[Gemini] final failure: {last_error}", file=sys.stderr)
     raise UserFacingError("Gemini 응답 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
 

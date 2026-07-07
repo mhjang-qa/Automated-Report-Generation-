@@ -23,6 +23,7 @@ PORT=8010 python3 app.py
 ```bash
 NOTION_TOKEN=secret_xxx
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY_2=your_fallback_gemini_api_key
 GEMINI_MODEL=gemini-2.0-flash
 NOTION_TARGET_DB_URL=https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb
 APP_LOGIN_PASSWORD=optional_password
@@ -35,6 +36,7 @@ APP_LOGIN_PASSWORD=optional_password
 
 선택:
 
+- `GEMINI_API_KEY_2`: `GEMINI_API_KEY`가 쿼터 초과를 반환할 때 재시도할 보조 Gemini API Key
 - `GEMINI_MODEL`: 기본값 `gemini-2.0-flash`
 - `NOTION_TARGET_DB_URL`: 요약 페이지를 생성할 대상 DB URL
 - `NOTION_TARGET_DATABASE_ID`: DB ID를 직접 지정할 때 사용하며, 이 값이 있으면 `NOTION_TARGET_DB_URL`보다 우선합니다.
