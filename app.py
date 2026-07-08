@@ -24,16 +24,22 @@ NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_SUMMARY_CONTENT_LIMIT = 12000
 DEFAULT_TC_SOURCE_LIMIT = 6000
+DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
 GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
 ACTIVE_ANALYZE_LOCK = threading.Lock()
 ACTIVE_ANALYZE_KEYS = set()
+GEMINI_LIMIT_LOCK = threading.Lock()
+GEMINI_LIMIT_UNTIL = 0.0
+GEMINI_LIMIT_REASON = ""
+GEMINI_LIMIT_DETAILS = {}
 
 
 class UserFacingError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, extra=None):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.extra = extra or {}
 
 
 def load_env():
@@ -111,8 +117,12 @@ def parse_gemini_error_body(body):
         "message": error.get("message"),
         "code": error.get("code"),
         "violations": [],
+        "retryDelaySeconds": None,
     }
     for detail in error.get("details", []) or []:
+        detail_type = detail.get("@type", "")
+        if detail_type.endswith("RetryInfo") and detail.get("retryDelay"):
+            parsed["retryDelaySeconds"] = parse_retry_delay_seconds(detail.get("retryDelay"))
         violations = detail.get("violations") or detail.get("quotaViolations") or []
         for violation in violations:
             parsed["violations"].append(
@@ -123,7 +133,93 @@ def parse_gemini_error_body(body):
                     "quotaValue": violation.get("quotaValue"),
                 }
             )
+    if parsed["retryDelaySeconds"] is None and parsed["message"]:
+        match = re.search(r"retry in ([0-9.]+)s", parsed["message"], re.IGNORECASE)
+        if match:
+            parsed["retryDelaySeconds"] = max(1, int(float(match.group(1)) + 0.999))
     return parsed
+
+
+def parse_retry_delay_seconds(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.isdigit():
+        return max(1, int(text))
+    match = re.fullmatch(r"([0-9.]+)s", text)
+    if match:
+        return max(1, int(float(match.group(1)) + 0.999))
+    return None
+
+
+def summarize_gemini_limit(parsed):
+    violations = parsed.get("violations") or []
+    quota_ids = " ".join(str(item.get("quotaId") or "") for item in violations)
+    metrics = " ".join(str(item.get("quotaMetric") or "") for item in violations)
+    if "PerDay" in quota_ids:
+        return "Gemini 일일 요청 한도 또는 무료 티어 한도에 도달했습니다."
+    if "PerMinute" in quota_ids or "input_token_count" in metrics:
+        return "Gemini 분당 요청/토큰 제한에 도달했습니다."
+    if parsed.get("status") == "RESOURCE_EXHAUSTED":
+        return "Gemini 프로젝트 사용 제한에 도달했습니다."
+    return "Gemini API 사용 제한이 발생했습니다."
+
+
+def gemini_limit_state():
+    with GEMINI_LIMIT_LOCK:
+        remaining = max(0, int(GEMINI_LIMIT_UNTIL - time.time() + 0.999))
+        return {
+            "available": remaining <= 0,
+            "retryAfterSeconds": remaining,
+            "reason": GEMINI_LIMIT_REASON,
+            "details": GEMINI_LIMIT_DETAILS,
+        }
+
+
+def set_gemini_limit_cooldown(request_id, parsed, retry_after=None):
+    global GEMINI_LIMIT_UNTIL, GEMINI_LIMIT_REASON, GEMINI_LIMIT_DETAILS
+    retry_seconds = parse_retry_delay_seconds(retry_after) if retry_after else None
+    retry_seconds = retry_seconds or parsed.get("retryDelaySeconds")
+    retry_seconds = retry_seconds or env_int("GEMINI_429_COOLDOWN_SECONDS", DEFAULT_GEMINI_429_COOLDOWN_SECONDS)
+    retry_seconds = max(1, retry_seconds)
+    reason = summarize_gemini_limit(parsed)
+    with GEMINI_LIMIT_LOCK:
+        GEMINI_LIMIT_UNTIL = max(GEMINI_LIMIT_UNTIL, time.time() + retry_seconds)
+        GEMINI_LIMIT_REASON = reason
+        GEMINI_LIMIT_DETAILS = {
+            "status": parsed.get("status"),
+            "code": parsed.get("code"),
+            "violations": parsed.get("violations") or [],
+        }
+    log_event(request_id, f"Gemini cooldown enabled seconds={retry_seconds} reason={reason}")
+    return retry_seconds, reason
+
+
+def gemini_limit_error_payload(retry_seconds, reason):
+    message = (
+        f"{GEMINI_429_MESSAGE} 현재 Gemini 호출을 약 {retry_seconds}초 동안 일시 중지했습니다. "
+        f"원인: {reason}"
+    )
+    return UserFacingError(
+        message,
+        429,
+        {
+            "geminiUnavailable": True,
+            "retryAfterSeconds": retry_seconds,
+            "reason": reason,
+        },
+    )
+
+
+def raise_if_gemini_limited(request_id, operation):
+    state = gemini_limit_state()
+    if state["available"]:
+        return
+    log_event(
+        request_id,
+        f"Gemini {operation} blocked by cooldown retry_after={state['retryAfterSeconds']} reason={state['reason']}",
+    )
+    raise gemini_limit_error_payload(state["retryAfterSeconds"], state["reason"])
 
 
 def extract_notion_id(url):
@@ -290,6 +386,7 @@ def fetch_ticket(url):
 
 
 def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
+    raise_if_gemini_limited(request_id, operation)
     primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
     api_keys = [("GEMINI_API_KEY", primary_key)]
     secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
@@ -316,6 +413,8 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
         f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} max_tokens={max_tokens} model={model}",
     )
     last_user_error = None
+    last_429_parsed = None
+    last_429_retry_after = None
     for key_name, api_key in api_keys:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -359,12 +458,20 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
                 log_event(request_id, f"Gemini {operation} HTTP status={exc.code} key_label={key_name} retry_after={retry_after}")
                 if exc.code == 429:
                     parsed = parse_gemini_error_body(detail)
+                    last_429_parsed = parsed
+                    last_429_retry_after = retry_after
                     log_event(request_id, f"Gemini {operation} 429 body={detail}")
                     log_event(request_id, f"Gemini {operation} 429 parsed={json.dumps(parsed, ensure_ascii=False)}")
-                    last_user_error = UserFacingError(GEMINI_429_MESSAGE, 429)
+                    retry_seconds = parse_retry_delay_seconds(retry_after) or parsed.get("retryDelaySeconds") or env_int(
+                        "GEMINI_429_COOLDOWN_SECONDS",
+                        DEFAULT_GEMINI_429_COOLDOWN_SECONDS,
+                    )
+                    last_user_error = gemini_limit_error_payload(retry_seconds, summarize_gemini_limit(parsed))
                     if len(api_keys) > 1 and key_name != api_keys[-1][0]:
                         log_event(request_id, f"Gemini {operation} 429 failover from key_label={key_name} to next key")
                         break
+                    retry_seconds, reason = set_gemini_limit_cooldown(request_id, parsed, retry_after)
+                    last_user_error = gemini_limit_error_payload(retry_seconds, reason)
                     raise last_user_error
                 if exc.code in (400, 401, 403):
                     raise UserFacingError(f"{key_name} 또는 Gemini 모델 설정을 확인해 주세요.", 502)
@@ -394,6 +501,9 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
             except UserFacingError:
                 raise
     if last_user_error:
+        if last_429_parsed:
+            retry_seconds, reason = set_gemini_limit_cooldown(request_id, last_429_parsed, last_429_retry_after)
+            raise gemini_limit_error_payload(retry_seconds, reason)
         raise last_user_error
     raise UserFacingError("Gemini 응답 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
 
@@ -613,8 +723,10 @@ def upload_tc(page_id, tc_markdown):
 def analyze_ticket(payload):
     request_id = uuid.uuid4().hex[:12]
     source_url = (payload.get("url") or "").strip()
-    analyze_key = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
     log_event(request_id, f"/api/analyze start sourceUrl={source_url}")
+    extract_notion_id(source_url)
+    raise_if_gemini_limited(request_id, "summary")
+    analyze_key = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
     with ACTIVE_ANALYZE_LOCK:
         if analyze_key in ACTIVE_ANALYZE_KEYS:
             log_event(request_id, f"/api/analyze duplicate blocked sourceUrl={source_url}")
@@ -688,11 +800,45 @@ def login(payload):
 
 
 class AppHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path in {"/", "/api/health", "/favicon.ico"}:
+            status = 204 if path == "/favicon.ico" else 200
+            self.send_response(status)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.send_response(404)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/health":
             json_response(self, 200, {"ok": True, "status": "ready"})
+            return
+        if path == "/api/gemini-status":
+            state = gemini_limit_state()
+            json_response(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "available": state["available"],
+                    "retryAfterSeconds": state["retryAfterSeconds"],
+                    "reason": state["reason"],
+                },
+            )
+            return
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
         if path == "/":
             self.serve_file(
@@ -745,7 +891,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 raise UserFacingError("지원하지 않는 요청입니다.", 404)
             json_response(self, 200, {"ok": True, **result})
         except UserFacingError as exc:
-            json_response(self, exc.status, {"ok": False, "message": exc.message})
+            json_response(self, exc.status, {"ok": False, "message": exc.message, **exc.extra})
         except Exception:
             traceback.print_exc()
             json_response(self, 500, {"ok": False, "message": "처리 중 오류가 발생했습니다. 서버 로그를 확인해 주세요."})

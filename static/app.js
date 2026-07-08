@@ -10,6 +10,8 @@ const state = {
   busy: false,
   loginBusy: false,
   isAnalyzing: false,
+  geminiRetryUntil: 0,
+  geminiLimitReason: "",
 };
 
 const el = {
@@ -39,6 +41,7 @@ const el = {
 
 const FLOOR_RISE_LOADING_DURATION_MS = 10200;
 const HEALTH_POLL_INTERVAL_MS = 1500;
+let geminiCooldownTimer = null;
 
 function showView(view) {
   if (el.loadingView) {
@@ -101,7 +104,7 @@ function showMessage(message, type = "") {
 
 function syncButtons() {
   const busy = state.busy || state.isAnalyzing;
-  el.analyzeBtn.disabled = busy;
+  el.analyzeBtn.disabled = busy || isGeminiCoolingDown();
   el.registerBtn.disabled = busy || !state.summary;
   el.generateTcBtn.disabled = busy || !state.summary;
   el.uploadTcBtn.disabled = busy || !state.tcMarkdown || !state.notionPageId;
@@ -122,9 +125,74 @@ async function apiPost(path, payload) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
-    throw new Error(data.message || "요청 처리에 실패했습니다.");
+    const error = new Error(data.message || "요청 처리에 실패했습니다.");
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
   return data;
+}
+
+async function apiGet(path) {
+  const res = await fetch(path, { method: "GET", cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const error = new Error(data.message || "요청 처리에 실패했습니다.");
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+function getGeminiCooldownSeconds() {
+  return Math.max(0, Math.ceil((state.geminiRetryUntil - Date.now()) / 1000));
+}
+
+function isGeminiCoolingDown() {
+  return getGeminiCooldownSeconds() > 0;
+}
+
+function renderGeminiCooldownMessage() {
+  const remaining = getGeminiCooldownSeconds();
+  if (remaining <= 0) {
+    state.geminiRetryUntil = 0;
+    state.geminiLimitReason = "";
+    if (geminiCooldownTimer) {
+      window.clearInterval(geminiCooldownTimer);
+      geminiCooldownTimer = null;
+    }
+    el.phaseBadge.textContent = "대기 중";
+    el.phaseBadge.className = "phase";
+    showMessage("Gemini 사용 제한 대기 시간이 지났습니다. 다시 시도할 수 있습니다.", "success");
+    syncButtons();
+    return;
+  }
+  const reason = state.geminiLimitReason ? ` 원인: ${state.geminiLimitReason}` : "";
+  setError(`Gemini 사용 제한으로 분석 기능을 ${remaining}초 동안 일시 중지했습니다.${reason}`);
+}
+
+function setGeminiCooldown(seconds, reason = "") {
+  const safeSeconds = Math.max(1, Number(seconds) || 1);
+  state.geminiRetryUntil = Date.now() + safeSeconds * 1000;
+  state.geminiLimitReason = reason;
+  renderGeminiCooldownMessage();
+  if (geminiCooldownTimer) {
+    window.clearInterval(geminiCooldownTimer);
+  }
+  geminiCooldownTimer = window.setInterval(renderGeminiCooldownMessage, 1000);
+  syncButtons();
+}
+
+async function refreshGeminiStatus() {
+  try {
+    const data = await apiGet("/api/gemini-status");
+    if (!data.available && data.retryAfterSeconds > 0) {
+      setGeminiCooldown(data.retryAfterSeconds, data.reason || "");
+    }
+  } catch (error) {
+    console.debug("Gemini status check failed.", error);
+  }
 }
 
 async function waitForBackendReady() {
@@ -163,6 +231,7 @@ async function login(event) {
     });
     sessionStorage.setItem("arg_authenticated", "true");
     showView("app");
+    refreshGeminiStatus();
   } catch (error) {
     console.error(error);
     el.loginMessage.textContent = error.message;
@@ -174,6 +243,10 @@ async function login(event) {
 
 async function analyze() {
   if (state.isAnalyzing) {
+    return;
+  }
+  if (isGeminiCoolingDown()) {
+    renderGeminiCooldownMessage();
     return;
   }
   const url = el.notionUrl.value.trim();
@@ -202,6 +275,10 @@ async function analyze() {
     setDone("요약 생성이 완료되었습니다.");
   } catch (error) {
     console.error(error);
+    if (error.status === 429 && error.data && error.data.retryAfterSeconds) {
+      setGeminiCooldown(error.data.retryAfterSeconds, error.data.reason || "");
+      return;
+    }
     setError(error.message);
   } finally {
     state.isAnalyzing = false;
