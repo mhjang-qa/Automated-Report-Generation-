@@ -3,7 +3,7 @@ const HEALTH_URL = `${RENDER_URL}/api/health`;
 const APP_URL = `${RENDER_URL}/?app=1&skipIntro=1`;
 const POLL_INTERVAL_MS = 2500;
 const SLOW_ATTEMPTS = 8;
-const LOADING_LOOP_MS = 11200;
+const LOADING_LOOP_MS = 9200;
 
 const loadingFrame = document.querySelector("#loadingFrame");
 const statusText = document.querySelector("#statusText");

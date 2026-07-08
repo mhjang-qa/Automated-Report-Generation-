@@ -41,7 +41,7 @@ const el = {
   notionPageLink: document.querySelector("#notionPageLink"),
 };
 
-const FLOOR_RISE_LOADING_DURATION_MS = 10200;
+const FLOOR_RISE_LOADING_DURATION_MS = 8200;
 const HEALTH_POLL_INTERVAL_MS = 2500;
 const SLOW_HEALTH_CHECK_ATTEMPTS = 8;
 let geminiCooldownTimer = null;
