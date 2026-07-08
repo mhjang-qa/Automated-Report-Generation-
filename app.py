@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import json
 import os
 import re
@@ -28,6 +29,8 @@ DEFAULT_GEMINI_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
 DEFAULT_SUMMARY_CONTENT_LIMIT = 12000
 DEFAULT_TC_SOURCE_LIMIT = 6000
 DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
+DEFAULT_NOTION_IMAGE_LIMIT = 4
+DEFAULT_NOTION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
 ACTIVE_ANALYZE_LOCK = threading.Lock()
 ACTIVE_ANALYZE_KEYS = set()
@@ -380,6 +383,26 @@ def block_to_text(block):
     return ""
 
 
+def block_to_image(block):
+    if block.get("type") != "image" or "image" not in block:
+        return None
+    data = block["image"]
+    source_type = data.get("type")
+    url = ""
+    if source_type == "file":
+        url = (data.get("file") or {}).get("url", "")
+    elif source_type == "external":
+        url = (data.get("external") or {}).get("url", "")
+    if not url:
+        return None
+    return {
+        "block_id": block.get("id", ""),
+        "source_type": source_type or "unknown",
+        "url": url,
+        "caption": rich_text_plain(data.get("caption")),
+    }
+
+
 def get_page_title(page):
     for prop in page.get("properties", {}).values():
         if prop.get("type") == "title":
@@ -389,9 +412,11 @@ def get_page_title(page):
     return "노션 티켓 요약"
 
 
-def collect_blocks(block_id, depth=0):
+def collect_blocks(block_id, depth=0, images=None):
     if depth > 8:
         return []
+    if images is None:
+        images = []
     results = []
     cursor = None
     while True:
@@ -400,15 +425,93 @@ def collect_blocks(block_id, depth=0):
             qs += f"&start_cursor={urllib.parse.quote(cursor)}"
         data = notion_request("GET", f"/blocks/{block_id}/children{qs}")
         for block in data.get("results", []):
+            image = block_to_image(block)
+            if image:
+                images.append(image)
+                caption = image["caption"] or "캡션 없음"
+                results.append(f"[이미지 {len(images)}] {caption}")
             text = block_to_text(block)
             if text:
                 results.append(text)
             if block.get("has_children"):
-                results.extend(collect_blocks(block["id"], depth + 1))
+                results.extend(collect_blocks(block["id"], depth + 1, images))
         if not data.get("has_more"):
             break
         cursor = data.get("next_cursor")
     return results
+
+
+def infer_image_mime(url, content_type=""):
+    mime = (content_type or "").split(";", 1)[0].strip().lower()
+    supported = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+    if mime in supported:
+        return mime
+    path = urllib.parse.urlparse(url).path.lower()
+    if path.endswith(".png"):
+        return "image/png"
+    if path.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    if path.endswith(".webp"):
+        return "image/webp"
+    if path.endswith(".gif"):
+        return "image/gif"
+    return "image/jpeg"
+
+
+def fetch_image_for_gemini(image, request_id, index):
+    max_bytes = env_int("NOTION_IMAGE_MAX_BYTES", DEFAULT_NOTION_IMAGE_MAX_BYTES)
+    req = urllib.request.Request(image["url"], method="GET", headers={"User-Agent": "Silce-QA/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            content_length = int(resp.headers.get("Content-Length", "0") or "0")
+            if content_length and content_length > max_bytes:
+                log_event(
+                    request_id,
+                    f"Notion image skipped index={index} reason=content_length_too_large bytes={content_length} max_bytes={max_bytes}",
+                )
+                return None
+            raw = resp.read(max_bytes + 1)
+            if len(raw) > max_bytes:
+                log_event(
+                    request_id,
+                    f"Notion image skipped index={index} reason=download_too_large bytes>{max_bytes}",
+                )
+                return None
+    except urllib.error.HTTPError as exc:
+        log_event(request_id, f"Notion image fetch failed index={index} status={exc.code}")
+        return None
+    except urllib.error.URLError as exc:
+        log_event(request_id, f"Notion image fetch network failed index={index}: {exc}")
+        return None
+    mime_type = infer_image_mime(image["url"], content_type)
+    if not mime_type.startswith("image/"):
+        log_event(request_id, f"Notion image skipped index={index} reason=unsupported_mime mime={mime_type}")
+        return None
+    log_event(
+        request_id,
+        f"Notion image prepared index={index} mime={mime_type} bytes={len(raw)} caption_length={len(image.get('caption') or '')}",
+    )
+    return {
+        "mime_type": mime_type,
+        "data": base64.b64encode(raw).decode("ascii"),
+        "caption": image.get("caption") or "",
+        "source_type": image.get("source_type") or "unknown",
+    }
+
+
+def prepare_gemini_images(images, request_id):
+    image_limit = env_int("NOTION_IMAGE_LIMIT", DEFAULT_NOTION_IMAGE_LIMIT, minimum=0)
+    if image_limit <= 0 or not images:
+        return []
+    prepared = []
+    for index, image in enumerate(images[:image_limit], start=1):
+        prepared_image = fetch_image_for_gemini(image, request_id, index)
+        if prepared_image:
+            prepared.append(prepared_image)
+    if len(images) > image_limit:
+        log_event(request_id, f"Notion images limited total={len(images)} sent={len(prepared)} limit={image_limit}")
+    return prepared
 
 
 def fetch_ticket(url):
@@ -420,14 +523,15 @@ def fetch_ticket(url):
         text = property_to_text(prop)
         if text:
             property_lines.append(f"{name}: {text}")
-    block_lines = collect_blocks(page_id)
+    images = []
+    block_lines = collect_blocks(page_id, images=images)
     combined = "\n".join(property_lines + block_lines).strip()
     if not combined:
         raise UserFacingError("노션 본문이 비어 있어 분석할 수 없습니다.", 400)
-    return {"page_id": page_id, "title": title, "content": combined}
+    return {"page_id": page_id, "title": title, "content": combined, "images": images}
 
 
-def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
+def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", images=None):
     raise_if_gemini_limited(request_id, operation)
     primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
     api_keys = [("GEMINI_API_KEY", primary_key)]
@@ -437,8 +541,20 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
     primary_model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
     fallback_models = env_csv("GEMINI_FALLBACK_MODELS", DEFAULT_GEMINI_FALLBACK_MODELS)
     models = unique_ordered([primary_model, *fallback_models])
+    parts = [{"text": prompt}]
+    for index, image in enumerate(images or [], start=1):
+        caption = image.get("caption") or "캡션 없음"
+        parts.append({"text": f"[이미지 {index} 설명]\n{caption}"})
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": image["mime_type"],
+                    "data": image["data"],
+                }
+            }
+        )
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {
             "temperature": 0.2,
             "topP": 0.8,
@@ -456,7 +572,7 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
         request_id,
         (
             f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} "
-            f"max_tokens={max_tokens} models={','.join(models)}"
+            f"image_count={len(images or [])} max_tokens={max_tokens} models={','.join(models)}"
         ),
     )
     last_user_error = None
@@ -822,15 +938,23 @@ def analyze_ticket(payload):
         summary_limit = env_int("SUMMARY_CONTENT_LIMIT", DEFAULT_SUMMARY_CONTENT_LIMIT)
         sent_content_length = min(len(ticket["content"]), summary_limit)
         prompt = build_summary_prompt(ticket["title"], ticket["content"])
+        gemini_images = prepare_gemini_images(ticket.get("images") or [], request_id)
         log_event(
             request_id,
             (
                 f"/api/analyze notion sourcePageId={ticket['page_id']} title={ticket['title']} "
                 f"content_length={len(ticket['content'])} sent_content_length={sent_content_length} "
-                f"prompt_length={len(prompt)}"
+                f"prompt_length={len(prompt)} image_blocks={len(ticket.get('images') or [])} "
+                f"sent_images={len(gemini_images)}"
             ),
         )
-        summary = gemini_request(prompt, max_tokens=4096, request_id=request_id, operation="summary")
+        summary = gemini_request(
+            prompt,
+            max_tokens=4096,
+            request_id=request_id,
+            operation="summary",
+            images=gemini_images,
+        )
         if "작업 내용 요약" not in summary or "검증 포인트" not in summary:
             log_event(request_id, "summary parse failed: required headings missing")
             raise UserFacingError("요약 결과 파싱에 실패했습니다. 다시 시도해 주세요.", 502)
