@@ -868,7 +868,7 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/health":
-            json_response(self, 200, {"ok": True, "status": "ready"})
+            json_response(self, 200, {"ok": True, "status": "running", "ready": True})
             return
         if path == "/api/gemini-status":
             state = gemini_limit_state()

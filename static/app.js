@@ -18,6 +18,8 @@ const el = {
   loadingView: document.querySelector("#loadingView"),
   loginView: document.querySelector("#loginView"),
   appView: document.querySelector("#appView"),
+  loadingStatus: document.querySelector("#loadingStatus"),
+  loadingHint: document.querySelector("#loadingHint"),
   loginForm: document.querySelector("#loginForm"),
   loginPassword: document.querySelector("#loginPassword"),
   loginBtn: document.querySelector("#loginBtn"),
@@ -40,7 +42,8 @@ const el = {
 };
 
 const FLOOR_RISE_LOADING_DURATION_MS = 10200;
-const HEALTH_POLL_INTERVAL_MS = 1500;
+const HEALTH_POLL_INTERVAL_MS = 2500;
+const SLOW_HEALTH_CHECK_ATTEMPTS = 8;
 let geminiCooldownTimer = null;
 
 function showView(view) {
@@ -74,6 +77,15 @@ function destroyLoadingView() {
 
 function delay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function setLoadingMessage(status, hint) {
+  if (el.loadingStatus) {
+    el.loadingStatus.textContent = status;
+  }
+  if (el.loadingHint) {
+    el.loadingHint.textContent = hint;
+  }
 }
 
 function setBusy(isBusy, phase = "대기 중") {
@@ -196,18 +208,32 @@ async function refreshGeminiStatus() {
 }
 
 async function waitForBackendReady() {
+  let attempts = 0;
+  setLoadingMessage(
+    "서버를 준비하는 중입니다. 잠시만 기다려주세요.",
+    "Render Cold Start로 인해 초기 접속 시간이 소요될 수 있습니다.",
+  );
   while (true) {
+    attempts += 1;
     try {
       const res = await fetch("/api/health", {
         method: "GET",
         cache: "no-store",
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
+      const status = String(data.status || "").toLowerCase();
+      const ready = data.ok === true && (!status || ["ready", "running", "ok"].includes(status));
+      if (res.ok && ready) {
         return;
       }
     } catch (error) {
       console.debug("Backend is not ready yet.", error);
+    }
+    if (attempts >= SLOW_HEALTH_CHECK_ATTEMPTS) {
+      setLoadingMessage(
+        "서버 준비가 예상보다 오래 걸리고 있습니다.",
+        "새로고침하지 않아도 준비 완료 후 자동으로 로그인 화면으로 이동합니다.",
+      );
     }
     await delay(HEALTH_POLL_INTERVAL_MS);
   }

@@ -41,6 +41,34 @@ body {
   background: #252423;
 }
 
+.cold-start-status {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 28px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: center;
+  pointer-events: none;
+}
+
+.cold-start-status p {
+  margin: 0;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+.cold-start-status p:first-child {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.cold-start-status p:last-child {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+}
+
 .login-view {
   min-height: 100vh;
   display: grid;
