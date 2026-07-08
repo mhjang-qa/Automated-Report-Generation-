@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
+TARGET_DATABASE_ID_DEFAULT = "39673fbd-1951-801b-aa4d-ea29b16a155a"
 NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
 DEFAULT_GEMINI_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
@@ -669,8 +670,20 @@ def ensure_target_database():
     target = os.environ.get("NOTION_TARGET_DATABASE_ID", "").strip()
     if not target:
         target_url = os.environ.get("NOTION_TARGET_DB_URL", TARGET_DB_URL_DEFAULT).strip()
-        target = extract_notion_database_id(target_url)
-    db = notion_request("GET", f"/databases/{normalize_uuid(target)}")
+        if target_url == TARGET_DB_URL_DEFAULT:
+            target = TARGET_DATABASE_ID_DEFAULT
+        else:
+            target = extract_notion_database_id(target_url)
+    target = normalize_uuid(target)
+    try:
+        db = notion_request("GET", f"/databases/{target}")
+    except UserFacingError as exc:
+        if exc.status == 404:
+            raise UserFacingError(
+                f"대상 노션 DB({target})를 찾을 수 없습니다. 해당 DB를 Notion Integration에 공유했는지 확인해 주세요.",
+                404,
+            )
+        raise
     props = db.get("properties", {})
     title_name = None
     for name, prop in props.items():
@@ -688,9 +701,9 @@ def ensure_target_database():
     }
     missing = {name: spec for name, spec in required.items() if name not in props}
     if missing:
-        notion_request("PATCH", f"/databases/{normalize_uuid(target)}", {"properties": missing})
-        db = notion_request("GET", f"/databases/{normalize_uuid(target)}")
-    return normalize_uuid(target), title_name, db
+        notion_request("PATCH", f"/databases/{target}", {"properties": missing})
+        db = notion_request("GET", f"/databases/{target}")
+    return target, title_name, db
 
 
 def rt(text, bold=False):

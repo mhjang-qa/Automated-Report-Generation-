@@ -27,6 +27,7 @@ GEMINI_API_KEY_2=your_fallback_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_FALLBACK_MODELS=gemini-2.5-flash,gemini-3.1-flash-lite
 NOTION_TARGET_DB_URL=https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb
+NOTION_TARGET_DATABASE_ID=39673fbd-1951-801b-aa4d-ea29b16a155a
 APP_LOGIN_PASSWORD=optional_password
 SUMMARY_CONTENT_LIMIT=12000
 TC_SOURCE_LIMIT=6000
@@ -56,6 +57,7 @@ GEMINI_429_COOLDOWN_SECONDS=60
 1. Notion Integration을 생성하고 `NOTION_TOKEN`에 토큰을 설정합니다.
 2. 원본 티켓 페이지와 대상 DB를 해당 Integration에 공유합니다.
 3. 대상 DB URL은 기본 요구사항의 DB URL을 사용합니다. 다른 DB를 쓰려면 `NOTION_TARGET_DB_URL` 또는 `NOTION_TARGET_DATABASE_ID`를 설정합니다.
+4. DB가 비어 있어도 괜찮습니다. 앱이 신규 row를 만들고 필요한 속성(`원본 노션 링크`, `요약 상태`, `생성 일시`, `TC 생성 여부`)을 자동 추가합니다.
 
 기본 대상 DB URL의 실제 DB ID는 path에 포함된 `39673fbd-1951-801b-aa4d-ea29b16a155a`입니다. URL 쿼리의 `v=39673fbd19518011b206000c9f5cdcfb`는 데이터베이스 view ID라서 Notion `/databases/{id}` 조회에 사용할 수 없습니다.
 
