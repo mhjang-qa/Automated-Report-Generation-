@@ -44,7 +44,7 @@ GEMINI_429_COOLDOWN_SECONDS=60
 - `GEMINI_MODEL`: 기본값 `gemini-2.5-flash-lite`
 - `GEMINI_FALLBACK_MODELS`: 기본 모델이 429, 400, 503, 네트워크 오류를 반환할 때 순차 시도할 대체 모델 목록, 기본값 `gemini-2.5-flash,gemini-3.1-flash-lite`
 - `NOTION_TARGET_DB_URL`: 요약 페이지를 생성할 대상 DB URL
-- `NOTION_TARGET_DATABASE_ID`: DB ID를 직접 지정할 때 사용하며, 이 값이 있으면 `NOTION_TARGET_DB_URL`보다 우선합니다.
+- `NOTION_TARGET_DATABASE_ID`: DB ID를 직접 지정할 때 사용하며, 이 값이 있으면 `NOTION_TARGET_DB_URL`보다 우선합니다. DB URL의 `v=` 값은 view ID이므로 이 값으로 지정하지 않습니다.
 - `APP_LOGIN_PASSWORD`: 설정하면 로그인 화면에서 해당 비밀번호를 입력해야 합니다. 미설정 시 로그인 버튼으로 바로 진입합니다.
 - `SUMMARY_CONTENT_LIMIT`: 요약 생성 시 Gemini에 전달할 노션 본문 최대 문자 수, 기본값 `12000`
 - `TC_SOURCE_LIMIT`: TC 생성 시 원문 참고로 전달할 최대 문자 수, 기본값 `6000`
@@ -56,6 +56,8 @@ GEMINI_429_COOLDOWN_SECONDS=60
 1. Notion Integration을 생성하고 `NOTION_TOKEN`에 토큰을 설정합니다.
 2. 원본 티켓 페이지와 대상 DB를 해당 Integration에 공유합니다.
 3. 대상 DB URL은 기본 요구사항의 DB URL을 사용합니다. 다른 DB를 쓰려면 `NOTION_TARGET_DB_URL` 또는 `NOTION_TARGET_DATABASE_ID`를 설정합니다.
+
+기본 대상 DB URL의 실제 DB ID는 path에 포함된 `39673fbd-1951-801b-aa4d-ea29b16a155a`입니다. URL 쿼리의 `v=39673fbd19518011b206000c9f5cdcfb`는 데이터베이스 view ID라서 Notion `/databases/{id}` 조회에 사용할 수 없습니다.
 
 대상 DB에 아래 속성이 없으면 서버가 자동으로 추가합니다.
 

@@ -259,6 +259,25 @@ def extract_notion_id(url):
     return normalize_uuid(candidates[-1])
 
 
+def extract_notion_database_id(url):
+    if not url or not url.strip():
+        raise UserFacingError("대상 노션 DB URL이 설정되어 있지 않습니다.", 500)
+    parsed = urllib.parse.urlparse(url.strip())
+    host = parsed.netloc.lower()
+    if "notion." not in host and "notion.site" not in host:
+        raise UserFacingError("대상 노션 DB URL 형식이 올바르지 않습니다.", 500)
+
+    path_candidates = re.findall(r"(?i)([0-9a-f]{32})", parsed.path)
+    if not path_candidates:
+        path_candidates = re.findall(
+            r"(?i)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+            parsed.path,
+        )
+    if path_candidates:
+        return normalize_uuid(path_candidates[-1])
+    return extract_notion_id(url)
+
+
 def normalize_uuid(value):
     compact = value.replace("-", "").lower()
     if not re.fullmatch(r"[0-9a-f]{32}", compact):
@@ -650,7 +669,7 @@ def ensure_target_database():
     target = os.environ.get("NOTION_TARGET_DATABASE_ID", "").strip()
     if not target:
         target_url = os.environ.get("NOTION_TARGET_DB_URL", TARGET_DB_URL_DEFAULT).strip()
-        target = extract_notion_id(target_url)
+        target = extract_notion_database_id(target_url)
     db = notion_request("GET", f"/databases/{normalize_uuid(target)}")
     props = db.get("properties", {})
     title_name = None
