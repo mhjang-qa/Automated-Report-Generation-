@@ -21,6 +21,7 @@ STATIC_DIR = ROOT / "static"
 LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
 TARGET_DATABASE_ID_DEFAULT = "39673fbd-1951-801b-aa4d-ea29b16a155a"
+PUBLIC_LANDING_URL_DEFAULT = "https://mhjang-qa.github.io/Automated-Report-Generation-/"
 NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
 DEFAULT_GEMINI_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
@@ -66,6 +67,9 @@ def json_response(handler, status, payload):
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -880,7 +884,28 @@ def login(payload):
     return {"authenticated": True}
 
 
+def landing_redirect_enabled(handler, parsed):
+    params = urllib.parse.parse_qs(parsed.query)
+    if params.get("app") == ["1"]:
+        return False
+    if os.environ.get("ENABLE_PUBLIC_LANDING_REDIRECT", "true").strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    host = (handler.headers.get("Host") or "").lower()
+    if host.startswith("127.0.0.1") or host.startswith("localhost"):
+        return False
+    return True
+
+
 class AppHandler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_HEAD(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -922,6 +947,9 @@ class AppHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if path == "/":
+            if landing_redirect_enabled(self, parsed):
+                self.redirect_to_public_landing()
+                return
             self.serve_file(
                 STATIC_DIR / "index.html",
                 "text/html; charset=utf-8",
@@ -953,6 +981,14 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             return
         json_response(self, 404, {"ok": False, "message": "요청한 페이지를 찾을 수 없습니다."})
+
+    def redirect_to_public_landing(self):
+        landing_url = os.environ.get("PUBLIC_LANDING_URL", PUBLIC_LANDING_URL_DEFAULT).strip() or PUBLIC_LANDING_URL_DEFAULT
+        self.send_response(302)
+        self.send_header("Location", landing_url)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_POST(self):
         try:

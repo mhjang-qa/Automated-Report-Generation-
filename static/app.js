@@ -241,7 +241,12 @@ async function waitForBackendReady() {
 
 async function bootApp() {
   showView("loading");
-  await Promise.all([delay(FLOOR_RISE_LOADING_DURATION_MS), waitForBackendReady()]);
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("skipIntro") === "1") {
+    await waitForBackendReady();
+  } else {
+    await Promise.all([delay(FLOOR_RISE_LOADING_DURATION_MS), waitForBackendReady()]);
+  }
   completeLoading();
 }
 

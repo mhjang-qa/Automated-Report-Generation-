@@ -1,0 +1,39 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background-color: #252423;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+}
+
+.final-brand {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) skewX(-8deg);
+    z-index: 9999;
+    width: min(86vw, 980px);
+    color: #ffffff;
+    font-family: Arial Black, Impact, Inter, Arial, sans-serif;
+    font-size: clamp(58px, 10vw, 170px);
+    font-weight: 900;
+    letter-spacing: 0;
+    text-align: center;
+    line-height: 0.92;
+    opacity: 0;
+    pointer-events: none;
+    text-shadow:
+        10px 10px 0 rgba(0, 0, 0, 0.16),
+        -2px -2px 0 rgba(255, 255, 255, 0.28),
+        0 0 28px rgba(255, 255, 255, 0.24);
+    -webkit-text-stroke: 2px rgba(130, 136, 154, 0.6);
+}
+
+#logo {
+    display: none;
+}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Silce-QA 준비 중</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="intro" aria-label="Render 서버 준비 화면">
+      <iframe id="loadingFrame" title="Silce-QA loading animation" src="./logding/index.html" loading="eager"></iframe>
+      <section class="cold-status">
+        <p id="statusText">서버를 준비하는 중입니다. 잠시만 기다려주세요.</p>
+        <p id="hintText">Render Cold Start로 인해 초기 접속 시간이 소요될 수 있습니다.</p>
+      </section>
+    </main>
+    <script src="./script.js"></script>
+  </body>
+</html>
