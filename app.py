@@ -21,7 +21,8 @@ STATIC_DIR = ROOT / "static"
 LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
 NOTION_VERSION = "2022-06-28"
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_GEMINI_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
 DEFAULT_SUMMARY_CONTENT_LIMIT = 12000
 DEFAULT_TC_SOURCE_LIMIT = 6000
 DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
@@ -100,6 +101,23 @@ def env_int(name, default, minimum=1):
         print(f"[Config] {name} must be >= {minimum}. Using default {default}.", file=sys.stderr)
         return default
     return value
+
+
+def env_csv(name, default=""):
+    raw = os.environ.get(name, default).strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def unique_ordered(items):
+    seen = set()
+    result = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
 
 
 def log_event(request_id, message):
@@ -392,7 +410,9 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
     secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
     if secondary_key:
         api_keys.append(("GEMINI_API_KEY_2", secondary_key))
-    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+    primary_model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+    fallback_models = env_csv("GEMINI_FALLBACK_MODELS", DEFAULT_GEMINI_FALLBACK_MODELS)
+    models = unique_ordered([primary_model, *fallback_models])
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -410,96 +430,125 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini"):
     payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     log_event(
         request_id,
-        f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} max_tokens={max_tokens} model={model}",
+        (
+            f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} "
+            f"max_tokens={max_tokens} models={','.join(models)}"
+        ),
     )
     last_user_error = None
     last_429_parsed = None
     last_429_retry_after = None
-    for key_name, api_key in api_keys:
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{urllib.parse.quote(model)}:generateContent?key={urllib.parse.quote(api_key)}"
-        )
-        for attempt in range(3):
-            req = urllib.request.Request(
-                url,
-                data=payload_bytes,
-                method="POST",
-                headers={"Content-Type": "application/json"},
+    total_combos = len(models) * len(api_keys)
+    combo_index = 0
+    for model in models:
+        for key_name, api_key in api_keys:
+            combo_index += 1
+            is_final_combo = combo_index == total_combos
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{urllib.parse.quote(model)}:generateContent?key={urllib.parse.quote(api_key)}"
             )
-            try:
-                log_event(request_id, f"Gemini {operation} request key_label={key_name} attempt={attempt + 1}")
-                with urllib.request.urlopen(req, timeout=90) as resp:
-                    log_event(request_id, f"Gemini {operation} HTTP status={resp.status} key_label={key_name}")
-                    data = json.loads(resp.read().decode("utf-8"))
-                candidates = data.get("candidates") or []
-                log_event(request_id, f"Gemini {operation} response candidates={len(candidates)} key_label={key_name}")
-                if not candidates:
-                    log_event(request_id, f"Gemini {operation} no candidates response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
-                    raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
-                finish_reason = candidates[0].get("finishReason")
-                if finish_reason:
-                    log_event(request_id, f"Gemini {operation} finishReason={finish_reason} key_label={key_name}")
-                if finish_reason == "MAX_TOKENS":
-                    raise UserFacingError("Gemini 응답이 길이 제한으로 중단되었습니다. 입력 본문을 줄이거나 다시 시도해 주세요.", 502)
-                if finish_reason in {"SAFETY", "RECITATION"}:
-                    raise UserFacingError("Gemini 응답이 안전 정책 또는 인용 제한으로 중단되었습니다. 입력 내용을 조정해 다시 시도해 주세요.", 502)
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text = "\n".join(part.get("text", "") for part in parts).strip()
-                if not text:
-                    log_event(request_id, f"Gemini {operation} empty text response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
-                    raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
-                if key_name != "GEMINI_API_KEY":
-                    log_event(request_id, f"Gemini {operation} request succeeded with fallback key_label={key_name}")
-                return text
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                retry_after = exc.headers.get("Retry-After")
-                log_event(request_id, f"Gemini {operation} HTTP status={exc.code} key_label={key_name} retry_after={retry_after}")
-                if exc.code == 429:
-                    parsed = parse_gemini_error_body(detail)
-                    last_429_parsed = parsed
-                    last_429_retry_after = retry_after
-                    log_event(request_id, f"Gemini {operation} 429 body={detail}")
-                    log_event(request_id, f"Gemini {operation} 429 parsed={json.dumps(parsed, ensure_ascii=False)}")
-                    retry_seconds = parse_retry_delay_seconds(retry_after) or parsed.get("retryDelaySeconds") or env_int(
-                        "GEMINI_429_COOLDOWN_SECONDS",
-                        DEFAULT_GEMINI_429_COOLDOWN_SECONDS,
+            for attempt in range(3):
+                req = urllib.request.Request(
+                    url,
+                    data=payload_bytes,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                try:
+                    log_event(
+                        request_id,
+                        f"Gemini {operation} request model={model} key_label={key_name} attempt={attempt + 1}",
                     )
-                    last_user_error = gemini_limit_error_payload(retry_seconds, summarize_gemini_limit(parsed))
-                    if len(api_keys) > 1 and key_name != api_keys[-1][0]:
-                        log_event(request_id, f"Gemini {operation} 429 failover from key_label={key_name} to next key")
-                        break
-                    retry_seconds, reason = set_gemini_limit_cooldown(request_id, parsed, retry_after)
-                    last_user_error = gemini_limit_error_payload(retry_seconds, reason)
+                    with urllib.request.urlopen(req, timeout=90) as resp:
+                        log_event(
+                            request_id,
+                            f"Gemini {operation} HTTP status={resp.status} model={model} key_label={key_name}",
+                        )
+                        data = json.loads(resp.read().decode("utf-8"))
+                    candidates = data.get("candidates") or []
+                    log_event(
+                        request_id,
+                        f"Gemini {operation} response candidates={len(candidates)} model={model} key_label={key_name}",
+                    )
+                    if not candidates:
+                        log_event(request_id, f"Gemini {operation} no candidates response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
+                        raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
+                    finish_reason = candidates[0].get("finishReason")
+                    if finish_reason:
+                        log_event(request_id, f"Gemini {operation} finishReason={finish_reason} model={model} key_label={key_name}")
+                    if finish_reason == "MAX_TOKENS":
+                        raise UserFacingError("Gemini 응답이 길이 제한으로 중단되었습니다. 입력 본문을 줄이거나 다시 시도해 주세요.", 502)
+                    if finish_reason in {"SAFETY", "RECITATION"}:
+                        raise UserFacingError("Gemini 응답이 안전 정책 또는 인용 제한으로 중단되었습니다. 입력 내용을 조정해 다시 시도해 주세요.", 502)
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text = "\n".join(part.get("text", "") for part in parts).strip()
+                    if not text:
+                        log_event(request_id, f"Gemini {operation} empty text response_head={json.dumps(data, ensure_ascii=False)[:2000]}")
+                        raise UserFacingError("Gemini 응답이 비어 있습니다. 다시 시도해 주세요.", 502)
+                    if key_name != "GEMINI_API_KEY" or model != primary_model:
+                        log_event(
+                            request_id,
+                            f"Gemini {operation} request succeeded with fallback model={model} key_label={key_name}",
+                        )
+                    return text
+                except urllib.error.HTTPError as exc:
+                    detail = exc.read().decode("utf-8", errors="replace")
+                    retry_after = exc.headers.get("Retry-After")
+                    log_event(
+                        request_id,
+                        f"Gemini {operation} HTTP status={exc.code} model={model} key_label={key_name} retry_after={retry_after}",
+                    )
+                    if exc.code == 429:
+                        parsed = parse_gemini_error_body(detail)
+                        last_429_parsed = parsed
+                        last_429_retry_after = retry_after
+                        log_event(request_id, f"Gemini {operation} 429 body={detail}")
+                        log_event(request_id, f"Gemini {operation} 429 parsed={json.dumps(parsed, ensure_ascii=False)}")
+                        retry_seconds = parse_retry_delay_seconds(retry_after) or parsed.get("retryDelaySeconds") or env_int(
+                            "GEMINI_429_COOLDOWN_SECONDS",
+                            DEFAULT_GEMINI_429_COOLDOWN_SECONDS,
+                        )
+                        last_user_error = gemini_limit_error_payload(retry_seconds, summarize_gemini_limit(parsed))
+                        if not is_final_combo:
+                            log_event(request_id, f"Gemini {operation} 429 failover to next model/key after model={model} key_label={key_name}")
+                            break
+                        retry_seconds, reason = set_gemini_limit_cooldown(request_id, parsed, retry_after)
+                        last_user_error = gemini_limit_error_payload(retry_seconds, reason)
+                        raise last_user_error
+                    if exc.code == 400:
+                        last_user_error = UserFacingError(f"Gemini 모델 설정을 확인해 주세요. 실패 모델: {model}", 502)
+                        if not is_final_combo:
+                            log_event(request_id, f"Gemini {operation} 400 failover to next model/key after model={model} key_label={key_name}")
+                            break
+                        raise last_user_error
+                    if exc.code in (401, 403):
+                        raise UserFacingError(f"{key_name} 권한 또는 Gemini API 설정을 확인해 주세요.", 502)
+                    last_user_error = UserFacingError("Gemini API 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
+                    if exc.code == 503:
+                        if attempt < 2:
+                            sleep_s = 1.5 * (2 ** attempt)
+                            log_event(request_id, f"Gemini {operation} 503 retry model={model} key_label={key_name} sleep={sleep_s}")
+                            time.sleep(sleep_s)
+                            continue
+                        if not is_final_combo:
+                            log_event(request_id, f"Gemini {operation} 503 failover to next model/key after model={model} key_label={key_name}")
+                            break
                     raise last_user_error
-                if exc.code in (400, 401, 403):
-                    raise UserFacingError(f"{key_name} 또는 Gemini 모델 설정을 확인해 주세요.", 502)
-                last_user_error = UserFacingError("Gemini API 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502)
-                if exc.code == 503:
+                except urllib.error.URLError as exc:
+                    log_event(request_id, f"Gemini {operation} network error model={model} key_label={key_name}: {exc}")
+                    last_user_error = UserFacingError("Gemini API에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.", 502)
                     if attempt < 2:
                         sleep_s = 1.5 * (2 ** attempt)
-                        log_event(request_id, f"Gemini {operation} 503 retry key_label={key_name} sleep={sleep_s}")
+                        log_event(request_id, f"Gemini {operation} network retry model={model} key_label={key_name} sleep={sleep_s}")
                         time.sleep(sleep_s)
                         continue
-                    if len(api_keys) > 1 and key_name != api_keys[-1][0]:
-                        log_event(request_id, f"Gemini {operation} 503 failover from key_label={key_name} to next key")
+                    if not is_final_combo:
+                        log_event(request_id, f"Gemini {operation} network failover to next model/key after model={model} key_label={key_name}")
                         break
-                raise last_user_error
-            except urllib.error.URLError as exc:
-                log_event(request_id, f"Gemini {operation} network error key_label={key_name}: {exc}")
-                last_user_error = UserFacingError("Gemini API에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.", 502)
-                if attempt < 2:
-                    sleep_s = 1.5 * (2 ** attempt)
-                    log_event(request_id, f"Gemini {operation} network retry key_label={key_name} sleep={sleep_s}")
-                    time.sleep(sleep_s)
-                    continue
-                if len(api_keys) > 1 and key_name != api_keys[-1][0]:
-                    log_event(request_id, f"Gemini {operation} network failover from key_label={key_name} to next key")
-                    break
-                raise last_user_error
-            except UserFacingError:
-                raise
+                    raise last_user_error
+                except UserFacingError:
+                    raise
     if last_user_error:
         if last_429_parsed:
             retry_seconds, reason = set_gemini_limit_cooldown(request_id, last_429_parsed, last_429_retry_after)
