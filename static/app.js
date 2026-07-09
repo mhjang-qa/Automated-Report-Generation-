@@ -7,7 +7,10 @@ const state = {
   notionPageId: "",
   notionPageUrl: "",
   tcMarkdown: "",
+  embedHtml: "",
+  embedFilename: "report.html",
   busy: false,
+  embedBusy: false,
   loginBusy: false,
   isAnalyzing: false,
   geminiRetryUntil: 0,
@@ -25,6 +28,10 @@ const el = {
   loginBtn: document.querySelector("#loginBtn"),
   loginMessage: document.querySelector("#loginMessage"),
   notionUrl: document.querySelector("#notionUrl"),
+  ticketTab: document.querySelector("#ticketTab"),
+  embedTab: document.querySelector("#embedTab"),
+  ticketView: document.querySelector("#ticketView"),
+  embedView: document.querySelector("#embedView"),
   analyzeBtn: document.querySelector("#analyzeBtn"),
   registerBtn: document.querySelector("#registerBtn"),
   generateTcBtn: document.querySelector("#generateTcBtn"),
@@ -39,6 +46,36 @@ const el = {
   phaseBadge: document.querySelector("#phaseBadge"),
   linkPanel: document.querySelector("#linkPanel"),
   notionPageLink: document.querySelector("#notionPageLink"),
+  embedType: document.querySelector("#embedType"),
+  embedVersion: document.querySelector("#embedVersion"),
+  embedTitle: document.querySelector("#embedTitle"),
+  embedFilename: document.querySelector("#embedFilename"),
+  embedNotionUrl: document.querySelector("#embedNotionUrl"),
+  embedDefectDbUrl: document.querySelector("#embedDefectDbUrl"),
+  embedTargetVersion: document.querySelector("#embedTargetVersion"),
+  embedTargetVersionList: document.querySelector("#embedTargetVersionList"),
+  embedDefectFields: document.querySelector("#embedDefectFields"),
+  embedTcFields: document.querySelector("#embedTcFields"),
+  embedEndFields: document.querySelector("#embedEndFields"),
+  tcAosPass: document.querySelector("#tcAosPass"),
+  tcAosFail: document.querySelector("#tcAosFail"),
+  tcAosNa: document.querySelector("#tcAosNa"),
+  tcIosPass: document.querySelector("#tcIosPass"),
+  tcIosFail: document.querySelector("#tcIosFail"),
+  tcIosNa: document.querySelector("#tcIosNa"),
+  endTotal: document.querySelector("#endTotal"),
+  endFixed: document.querySelector("#endFixed"),
+  endFuture: document.querySelector("#endFuture"),
+  endInvalid: document.querySelector("#endInvalid"),
+  endNote: document.querySelector("#endNote"),
+  embedRawText: document.querySelector("#embedRawText"),
+  embedMessage: document.querySelector("#embedMessage"),
+  embedMeta: document.querySelector("#embedMeta"),
+  embedPreview: document.querySelector("#embedPreview"),
+  generateEmbedBtn: document.querySelector("#generateEmbedBtn"),
+  copyEmbedHtmlBtn: document.querySelector("#copyEmbedHtmlBtn"),
+  downloadEmbedHtmlBtn: document.querySelector("#downloadEmbedHtmlBtn"),
+  loadTargetVersionsBtn: document.querySelector("#loadTargetVersionsBtn"),
 };
 
 const FLOOR_RISE_LOADING_DURATION_MS = 8200;
@@ -114,6 +151,28 @@ function showMessage(message, type = "") {
   el.message.className = `message ${type}`.trim();
 }
 
+function showEmbedMessage(message, type = "") {
+  el.embedMessage.textContent = message || "";
+  el.embedMessage.className = `message ${type}`.trim();
+}
+
+function switchTab(tabName) {
+  const isEmbed = tabName === "embed";
+  el.ticketTab.classList.toggle("active", !isEmbed);
+  el.embedTab.classList.toggle("active", isEmbed);
+  el.ticketView.classList.toggle("hidden", isEmbed);
+  el.embedView.classList.toggle("hidden", !isEmbed);
+  if (isEmbed) {
+    el.phaseBadge.textContent = "HTML 생성";
+    el.phaseBadge.className = "phase";
+    el.embedNotionUrl.focus();
+  } else {
+    el.phaseBadge.textContent = "대기 중";
+    el.phaseBadge.className = "phase";
+    el.notionUrl.focus();
+  }
+}
+
 function syncButtons() {
   const busy = state.busy || state.isAnalyzing;
   el.analyzeBtn.disabled = busy || isGeminiCoolingDown();
@@ -122,6 +181,10 @@ function syncButtons() {
   el.uploadTcBtn.disabled = busy || !state.tcMarkdown || !state.notionPageId;
   el.copySummaryBtn.disabled = !state.summary;
   el.copyTcBtn.disabled = !state.tcMarkdown;
+  el.generateEmbedBtn.disabled = state.embedBusy;
+  el.loadTargetVersionsBtn.disabled = state.embedBusy;
+  el.copyEmbedHtmlBtn.disabled = !state.embedHtml;
+  el.downloadEmbedHtmlBtn.disabled = !state.embedHtml;
 }
 
 function setPreview(node, value, emptyText) {
@@ -400,16 +463,128 @@ function renderNotionLink() {
   el.notionPageLink.textContent = state.notionPageUrl;
 }
 
+function escapeAttr(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function updateEmbedTypeFields() {
+  const type = el.embedType.value;
+  el.embedTcFields.classList.toggle("hidden", type !== "TC");
+  el.embedEndFields.classList.toggle("hidden", type !== "END");
+  el.embedDefectFields.classList.toggle("hidden", !["EM", "FEA"].includes(type));
+  if (!el.embedFilename.value.trim()) {
+    const version = el.embedVersion.value.trim() || "report";
+    el.embedFilename.placeholder = `${type.toLowerCase()}_${version}.html`;
+  }
+}
+
+function embedPayload() {
+  return {
+    templateType: el.embedType.value,
+    title: el.embedTitle.value.trim(),
+    version: el.embedVersion.value.trim(),
+    filename: el.embedFilename.value.trim(),
+    notionUrl: el.embedNotionUrl.value.trim(),
+    defectDbUrl: el.embedDefectDbUrl.value.trim(),
+    targetVersion: el.embedTargetVersion.value.trim(),
+    rawText: el.embedRawText.value,
+    tcAosPass: el.tcAosPass.value,
+    tcAosFail: el.tcAosFail.value,
+    tcAosNa: el.tcAosNa.value,
+    tcIosPass: el.tcIosPass.value,
+    tcIosFail: el.tcIosFail.value,
+    tcIosNa: el.tcIosNa.value,
+    endTotal: el.endTotal.value,
+    endFixed: el.endFixed.value,
+    endFuture: el.endFuture.value,
+    endInvalid: el.endInvalid.value,
+    endNote: el.endNote.value,
+  };
+}
+
+async function generateEmbedHtml() {
+  if (state.embedBusy) return;
+  state.embedBusy = true;
+  state.embedHtml = "";
+  syncButtons();
+  showEmbedMessage("HTML을 생성하는 중입니다.");
+  try {
+    const data = await apiPost("/api/embed-html", embedPayload());
+    state.embedHtml = data.html || "";
+    state.embedFilename = data.filename || el.embedFilename.value.trim() || "report.html";
+    el.embedPreview.srcdoc = state.embedHtml;
+    el.embedMeta.textContent = `${data.templateType || el.embedType.value} · ${state.embedFilename}`;
+    showEmbedMessage("HTML 생성이 완료되었습니다.", "success");
+  } catch (error) {
+    console.error(error);
+    el.embedPreview.removeAttribute("srcdoc");
+    showEmbedMessage(error.message, "error");
+  } finally {
+    state.embedBusy = false;
+    syncButtons();
+  }
+}
+
+async function loadEmbedTargetVersions() {
+  if (state.embedBusy) return;
+  state.embedBusy = true;
+  syncButtons();
+  showEmbedMessage("목표버전 목록을 불러오는 중입니다.");
+  try {
+    const data = await apiPost("/api/embed-target-versions", {
+      defectDbUrl: el.embedDefectDbUrl.value.trim(),
+    });
+    const versions = data.versions || [];
+    el.embedTargetVersionList.innerHTML = versions.map((version) => `<option value="${escapeAttr(version)}"></option>`).join("");
+    if (versions.length && !el.embedTargetVersion.value.trim()) {
+      el.embedTargetVersion.value = versions[versions.length - 1];
+    }
+    showEmbedMessage(`목표버전 ${versions.length}개를 불러왔습니다.`, "success");
+  } catch (error) {
+    console.error(error);
+    showEmbedMessage(error.message, "error");
+  } finally {
+    state.embedBusy = false;
+    syncButtons();
+  }
+}
+
+function downloadEmbedHtml() {
+  if (!state.embedHtml) return;
+  const blob = new Blob([state.embedHtml], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = state.embedFilename || "report.html";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 el.analyzeBtn.addEventListener("click", analyze);
 el.registerBtn.addEventListener("click", registerSummary);
 el.generateTcBtn.addEventListener("click", generateTc);
 el.uploadTcBtn.addEventListener("click", uploadTc);
 el.copySummaryBtn.addEventListener("click", () => copyText(state.summary, "요약 결과"));
 el.copyTcBtn.addEventListener("click", () => copyText(state.tcMarkdown, "TC 결과"));
+el.ticketTab.addEventListener("click", () => switchTab("ticket"));
+el.embedTab.addEventListener("click", () => switchTab("embed"));
+el.embedType.addEventListener("change", updateEmbedTypeFields);
+el.embedVersion.addEventListener("input", updateEmbedTypeFields);
+el.generateEmbedBtn.addEventListener("click", generateEmbedHtml);
+el.loadTargetVersionsBtn.addEventListener("click", loadEmbedTargetVersions);
+el.copyEmbedHtmlBtn.addEventListener("click", () => copyText(state.embedHtml, "HTML"));
+el.downloadEmbedHtmlBtn.addEventListener("click", downloadEmbedHtml);
 el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyze();
 });
 
+updateEmbedTypeFields();
 syncButtons();
 bootApp();

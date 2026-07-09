@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from notion_html_service import GenerateRequest, generate_report, list_target_versions
+
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -1008,6 +1010,55 @@ def login(payload):
     return {"authenticated": True}
 
 
+def _embed_int(payload, key, default=0):
+    raw = payload.get(key, default)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise UserFacingError(f"{key} 값은 숫자여야 합니다.", 400)
+
+
+def generate_embed_html(payload):
+    request = GenerateRequest(
+        template_type=payload.get("templateType") or payload.get("template_type") or "",
+        title=payload.get("title") or "",
+        version=payload.get("version") or "",
+        filename=payload.get("filename") or "",
+        notion_url=payload.get("notionUrl") or payload.get("notion_url") or "",
+        raw_text=payload.get("rawText") or payload.get("raw_text") or "",
+        defect_db_url=payload.get("defectDbUrl") or payload.get("defect_db_url") or "",
+        target_version=payload.get("targetVersion") or payload.get("target_version") or "",
+        end_total=_embed_int(payload, "endTotal", 82),
+        end_fixed=_embed_int(payload, "endFixed", 60),
+        end_future=_embed_int(payload, "endFuture", 2),
+        end_invalid=_embed_int(payload, "endInvalid", 20),
+        end_note=payload.get("endNote") or "※ 차트 수치는 총합 기준으로 집계했습니다.",
+        tc_aos_pass=_embed_int(payload, "tcAosPass", 214),
+        tc_aos_fail=_embed_int(payload, "tcAosFail", 23),
+        tc_aos_na=_embed_int(payload, "tcAosNa", 123),
+        tc_ios_pass=_embed_int(payload, "tcIosPass", 177),
+        tc_ios_fail=_embed_int(payload, "tcIosFail", 36),
+        tc_ios_na=_embed_int(payload, "tcIosNa", 147),
+    )
+    result = generate_report(request)
+    return {
+        "html": result.html,
+        "templateType": result.template_type,
+        "title": result.title,
+        "version": result.version,
+        "filename": result.filename,
+        "message": result.message,
+    }
+
+
+def embed_target_versions(payload):
+    defect_url = payload.get("defectDbUrl") or payload.get("defect_db_url") or ""
+    versions = list_target_versions(defect_url)
+    return {"versions": versions}
+
+
 def landing_redirect_enabled(handler, parsed):
     params = urllib.parse.parse_qs(parsed.query)
     if params.get("app") == ["1"]:
@@ -1128,6 +1179,10 @@ class AppHandler(BaseHTTPRequestHandler):
             elif self.path == "/api/upload-tc":
                 page_id = payload.get("pageId") or payload.get("notionPageId")
                 result = upload_tc(page_id, payload.get("tcMarkdown") or "")
+            elif self.path == "/api/embed-html":
+                result = generate_embed_html(payload)
+            elif self.path == "/api/embed-target-versions":
+                result = embed_target_versions(payload)
             else:
                 raise UserFacingError("지원하지 않는 요청입니다.", 404)
             json_response(self, 200, {"ok": True, **result})

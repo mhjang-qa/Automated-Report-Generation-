@@ -38,50 +38,167 @@
         <div id="phaseBadge" class="phase">대기 중</div>
       </section>
 
-      <section class="panel input-panel">
-        <label for="notionUrl">노션 티켓 링크</label>
-        <div class="url-row">
-          <input id="notionUrl" type="url" placeholder="https://www.notion.so/..." autocomplete="off" />
-          <button id="analyzeBtn" class="primary">분석 요약</button>
-        </div>
-        <div id="message" class="message" role="status" aria-live="polite"></div>
-      </section>
+      <nav class="tabs" aria-label="상단 메뉴">
+        <button id="ticketTab" class="tab active" type="button" data-tab="ticket">티켓 분석</button>
+        <button id="embedTab" class="tab" type="button" data-tab="embed">임베드 HTML 생성</button>
+      </nav>
 
-      <section class="grid">
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>요약 결과</h2>
-              <span id="summaryMeta" class="meta"></span>
-            </div>
-            <div class="actions">
-              <button id="copySummaryBtn" class="ghost" disabled>복사</button>
-              <button id="registerBtn" class="primary" disabled>노션 등록</button>
-            </div>
+      <div id="ticketView" class="tab-view">
+        <section class="panel input-panel">
+          <label for="notionUrl">노션 티켓 링크</label>
+          <div class="url-row">
+            <input id="notionUrl" type="url" placeholder="https://www.notion.so/..." autocomplete="off" />
+            <button id="analyzeBtn" class="primary">분석 요약</button>
           </div>
-          <pre id="summaryPreview" class="preview empty">요약 결과가 여기에 표시됩니다.</pre>
-        </article>
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>테스트 케이스</h2>
-              <span id="tcMeta" class="meta"></span>
+        <section class="grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>요약 결과</h2>
+                <span id="summaryMeta" class="meta"></span>
+              </div>
+              <div class="actions">
+                <button id="copySummaryBtn" class="ghost" disabled>복사</button>
+                <button id="registerBtn" class="primary" disabled>노션 등록</button>
+              </div>
             </div>
-            <div class="actions">
-              <button id="copyTcBtn" class="ghost" disabled>복사</button>
-              <button id="generateTcBtn" class="primary" disabled>TC 생성하기</button>
-              <button id="uploadTcBtn" class="primary" disabled>TC 업로드</button>
-            </div>
-          </div>
-          <pre id="tcPreview" class="preview empty">TC 결과가 여기에 표시됩니다.</pre>
-        </article>
-      </section>
+            <pre id="summaryPreview" class="preview empty">요약 결과가 여기에 표시됩니다.</pre>
+          </article>
 
-      <section id="linkPanel" class="panel link-panel hidden">
-        <h2>노션 저장 페이지</h2>
-        <a id="notionPageLink" href="#" target="_blank" rel="noreferrer"></a>
-      </section>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>테스트 케이스</h2>
+                <span id="tcMeta" class="meta"></span>
+              </div>
+              <div class="actions">
+                <button id="copyTcBtn" class="ghost" disabled>복사</button>
+                <button id="generateTcBtn" class="primary" disabled>TC 생성하기</button>
+                <button id="uploadTcBtn" class="primary" disabled>TC 업로드</button>
+              </div>
+            </div>
+            <pre id="tcPreview" class="preview empty">TC 결과가 여기에 표시됩니다.</pre>
+          </article>
+        </section>
+
+        <section id="linkPanel" class="panel link-panel hidden">
+          <h2>노션 저장 페이지</h2>
+          <a id="notionPageLink" href="#" target="_blank" rel="noreferrer"></a>
+        </section>
+      </div>
+
+      <div id="embedView" class="tab-view hidden">
+        <section class="embed-layout">
+          <article class="panel embed-form-panel">
+            <div class="panel-head">
+              <div>
+                <h2>노션 임베드용 HTML 생성</h2>
+                <span class="meta">TC, EM, FEA, END 리포트를 생성합니다.</span>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                생성 유형
+                <select id="embedType">
+                  <option value="TC">TC</option>
+                  <option value="EM">EM</option>
+                  <option value="FEA">FEA</option>
+                  <option value="END">END</option>
+                </select>
+              </label>
+              <label>
+                버전
+                <input id="embedVersion" type="text" value="5.23.0" />
+              </label>
+            </div>
+
+            <label>
+              타이틀
+              <input id="embedTitle" type="text" placeholder="비우면 유형별 기본값 사용" />
+            </label>
+
+            <label>
+              파일명
+              <input id="embedFilename" type="text" placeholder="tc_5.23.0.html" />
+            </label>
+
+            <label>
+              Notion 링크
+              <input id="embedNotionUrl" type="url" placeholder="TC/END 생성 시 사용" />
+            </label>
+
+            <div id="embedDefectFields">
+              <label>
+                결함 DB 링크
+                <input id="embedDefectDbUrl" type="url" placeholder="EM/FEA 생성 시 사용" />
+              </label>
+              <div class="target-row">
+                <label>
+                  목표버전
+                  <input id="embedTargetVersion" type="text" placeholder="예: 5.23.0" list="embedTargetVersionList" />
+                  <datalist id="embedTargetVersionList"></datalist>
+                </label>
+                <button id="loadTargetVersionsBtn" class="ghost" type="button">목표버전 로딩</button>
+              </div>
+            </div>
+
+            <div id="embedTcFields" class="embed-type-fields">
+              <h3>TC 수동 값</h3>
+              <div class="metric-row">
+                <span>AOS</span>
+                <input id="tcAosPass" type="number" value="214" aria-label="AOS PASS" />
+                <input id="tcAosFail" type="number" value="23" aria-label="AOS FAIL" />
+                <input id="tcAosNa" type="number" value="123" aria-label="AOS NA" />
+              </div>
+              <div class="metric-row">
+                <span>iOS</span>
+                <input id="tcIosPass" type="number" value="177" aria-label="iOS PASS" />
+                <input id="tcIosFail" type="number" value="36" aria-label="iOS FAIL" />
+                <input id="tcIosNa" type="number" value="147" aria-label="iOS NA" />
+              </div>
+              <div class="metric-hint">각 행 입력 순서: PASS / FAIL / NA</div>
+            </div>
+
+            <div id="embedEndFields" class="embed-type-fields hidden">
+              <h3>END 수동 값</h3>
+              <div class="metric-row end-row">
+                <input id="endTotal" type="number" value="82" aria-label="전체" />
+                <input id="endFixed" type="number" value="60" aria-label="수정 정상 반영" />
+                <input id="endFuture" type="number" value="2" aria-label="추후 수정" />
+                <input id="endInvalid" type="number" value="20" aria-label="결함아님" />
+              </div>
+              <input id="endNote" type="text" value="※ 차트 수치는 총합 기준으로 집계했습니다." />
+              <div class="metric-hint">입력 순서: 전체 / 수정 정상 반영 / 추후 수정 / 결함아님</div>
+            </div>
+
+            <label>
+              원본 데이터
+              <textarea id="embedRawText" class="embed-raw" placeholder="Notion 링크 없이 수동 데이터로 생성할 때 사용"></textarea>
+            </label>
+
+            <div id="embedMessage" class="message" role="status" aria-live="polite"></div>
+            <div class="actions embed-actions">
+              <button id="generateEmbedBtn" class="primary" type="button">HTML 생성</button>
+              <button id="copyEmbedHtmlBtn" class="ghost" type="button" disabled>HTML 복사</button>
+              <button id="downloadEmbedHtmlBtn" class="ghost" type="button" disabled>다운로드</button>
+            </div>
+          </article>
+
+          <article class="panel embed-preview-panel">
+            <div class="panel-head">
+              <div>
+                <h2>미리보기</h2>
+                <span id="embedMeta" class="meta"></span>
+              </div>
+            </div>
+            <iframe id="embedPreview" class="embed-preview" title="생성된 HTML 미리보기"></iframe>
+          </article>
+        </section>
+      </div>
     </main>
     <script src="/app.js"></script>
   </body>
