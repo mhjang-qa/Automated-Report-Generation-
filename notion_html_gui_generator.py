@@ -5,12 +5,19 @@ import html
 import json
 import os
 import re
-import tkinter as tk
 import urllib.error
 import urllib.parse
 import urllib.request
-from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
+
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+except ModuleNotFoundError:
+    tk = None
+    ttk = None
+    filedialog = None
+    messagebox = None
 
 
 NOTION_API_VERSION = "2022-06-28"
@@ -3492,6 +3499,8 @@ class NotionHtmlGeneratorGUI:
 
 
 if __name__ == "__main__":
+    if tk is None:
+        raise SystemExit("tkinter가 설치되어 있지 않아 GUI를 실행할 수 없습니다. 웹 서버에서는 app.py를 실행하세요.")
     print("GUI starting...")
     root = tk.Tk()
     print("Tk created")
