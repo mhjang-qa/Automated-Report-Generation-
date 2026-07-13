@@ -90,7 +90,6 @@ const el = {
   pixelFigmaImageFile: document.querySelector("#pixelFigmaImageFile"),
   pixelPageUrl: document.querySelector("#pixelPageUrl"),
   pixelStartUrl: document.querySelector("#pixelStartUrl"),
-  pixelAutoFlow: document.querySelector("#pixelAutoFlow"),
   pixelViewportPreset: document.querySelector("#pixelViewportPreset"),
   pixelFrameSelect: document.querySelector("#pixelFrameSelect"),
   pixelWidth: document.querySelector("#pixelWidth"),
@@ -117,10 +116,9 @@ const el = {
   pixelActualStage: document.querySelector("#pixelActualStage"),
   pixelStage: document.querySelector("#pixelStage"),
   pixelFigmaOnlyImage: document.querySelector("#pixelFigmaOnlyImage"),
-  pixelActualFrame: document.querySelector("#pixelActualFrame"),
   pixelActualScreenshot: document.querySelector("#pixelActualScreenshot"),
+  pixelOverlayActualScreenshot: document.querySelector("#pixelOverlayActualScreenshot"),
   pixelActualFigmaImage: document.querySelector("#pixelActualFigmaImage"),
-  pixelPageFrame: document.querySelector("#pixelPageFrame"),
   pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
   pixelEmptyState: document.querySelector("#pixelEmptyState"),
 };
@@ -698,9 +696,14 @@ function applyPixelStage() {
     image.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
     image.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
   });
-  el.pixelActualScreenshot.style.opacity = "1";
-  el.pixelActualScreenshot.style.transform = "none";
-  el.pixelActualScreenshot.style.clipPath = "none";
+  [el.pixelActualScreenshot, el.pixelOverlayActualScreenshot].forEach((image) => {
+    image.style.opacity = "1";
+    image.style.top = `${actualOffsetTop}px`;
+    image.style.bottom = "auto";
+    image.style.height = `${viewport.height}px`;
+    image.style.transform = "none";
+    image.style.clipPath = "none";
+  });
   el.pixelReadout.textContent = `Mode ${targetMode.toUpperCase()} · X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${actualOffsetTop}px · Diff ${viewport.width} × ${compareHeight}`;
 }
 
@@ -846,164 +849,6 @@ function pixelStartUrl(pageUrl) {
   return el.pixelStartUrl.value.trim() || pixelSpecialStartUrl(pageUrl);
 }
 
-function pixelFlowSteps() {
-  const raw = el.pixelAutoFlow.value.trim();
-  if (raw) {
-    return raw.split(/[,>\n]/).map((step) => step.trim()).filter(Boolean);
-  }
-  return [];
-}
-
-function collectPixelFrameElements(root, result = []) {
-  if (!root || !root.querySelectorAll) return result;
-  root.querySelectorAll("*").forEach((node) => {
-    result.push(node);
-    if (node.shadowRoot) {
-      collectPixelFrameElements(node.shadowRoot, result);
-    }
-  });
-  return result;
-}
-
-function visiblePixelElement(node) {
-  const rect = node.getBoundingClientRect();
-  const style = node.ownerDocument.defaultView.getComputedStyle(node);
-  return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
-}
-
-function findPixelClickableByText(doc, keyword) {
-  const normalizedKeyword = keyword.replace(/\s+/g, "");
-  const elements = collectPixelFrameElements(doc);
-  const candidates = elements.filter((node) => {
-    const text = (node.innerText || node.textContent || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
-    return text.includes(normalizedKeyword) && visiblePixelElement(node);
-  }).sort((left, right) => {
-    const leftRect = left.getBoundingClientRect();
-    const rightRect = right.getBoundingClientRect();
-    return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
-  });
-  for (const candidate of candidates) {
-    const clickable = candidate.closest("button,a,[role='button'],label") || candidate;
-    if (visiblePixelElement(clickable)) return clickable;
-  }
-  return null;
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function clickPixelFrameText(frame, keyword) {
-  const deadline = Date.now() + 15000;
-  const keywords = keyword.split("|").map((item) => item.trim()).filter(Boolean);
-  while (Date.now() < deadline) {
-    let doc;
-    try {
-      doc = frame.contentDocument;
-    } catch (error) {
-      throw new Error("자동 클릭은 PixelAudit 프록시 화면에서만 사용할 수 있습니다.");
-    }
-    const clickable = doc && keywords.map((item) => findPixelClickableByText(doc, item)).find(Boolean);
-    if (clickable) {
-      clickable.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, view: frame.contentWindow }));
-      clickable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: frame.contentWindow }));
-      clickable.click();
-      clickable.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: frame.contentWindow }));
-      clickable.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, cancelable: true, view: frame.contentWindow }));
-      await wait(900);
-      return true;
-    }
-    await wait(500);
-  }
-  throw new Error(`자동 클릭 대상을 찾지 못했습니다: ${keyword}`);
-}
-
-async function runPixelAutoFlow(frame, steps) {
-  if (!steps.length) return;
-  await wait(1200);
-  for (const step of steps) {
-    await clickPixelFrameText(frame, step);
-  }
-}
-
-function pixelAutoFlowScript(steps) {
-  if (!steps.length) return "";
-  const safeSteps = JSON.stringify(steps).replace(/</g, "\\u003c");
-  return `<script>
-    (function () {
-      var steps = ${safeSteps};
-      function wait(ms) {
-        return new Promise(function (resolve) { setTimeout(resolve, ms); });
-      }
-      function collect(root, result) {
-        result = result || [];
-        if (!root || !root.querySelectorAll) return result;
-        root.querySelectorAll("*").forEach(function (node) {
-          result.push(node);
-          if (node.shadowRoot) collect(node.shadowRoot, result);
-        });
-        return result;
-      }
-      function visible(node) {
-        var rect = node.getBoundingClientRect();
-        var style = window.getComputedStyle(node);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
-      }
-      function find(keyword) {
-        var normalized = keyword.replace(/\\s+/g, "");
-        return collect(document).filter(function (node) {
-          var text = (node.innerText || node.textContent || node.getAttribute("aria-label") || "").replace(/\\s+/g, "");
-          return text.indexOf(normalized) > -1 && visible(node);
-        }).sort(function (left, right) {
-          var leftRect = left.getBoundingClientRect();
-          var rightRect = right.getBoundingClientRect();
-          return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
-        }).map(function (node) {
-          return node.closest("button,a,[role='button'],label") || node;
-        }).find(visible);
-      }
-      async function clickStep(step) {
-        var keywords = step.split("|").map(function (item) { return item.trim(); }).filter(Boolean);
-        var deadline = Date.now() + 15000;
-        while (Date.now() < deadline) {
-          var target = keywords.map(find).find(Boolean);
-          if (target) {
-            target.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, view: window }));
-            target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-            target.click();
-            target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-            target.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, cancelable: true, view: window }));
-            await wait(900);
-            return;
-          }
-          await wait(500);
-        }
-        console.warn("PixelAudit auto flow target not found:", step);
-      }
-      async function run() {
-        await wait(1200);
-        for (var index = 0; index < steps.length; index += 1) {
-          await clickStep(steps[index]);
-        }
-      }
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", run, { once: true });
-      } else {
-        run();
-      }
-    })();
-  <\/script>`;
-}
-
-function injectPixelAutoFlow(html, steps) {
-  const script = pixelAutoFlowScript(steps);
-  if (!script) return html;
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, `${script}</body>`);
-  }
-  return html + script;
-}
-
 async function captureExternalActualScreen() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
     throw new Error("현재 브라우저는 화면 캡처를 지원하지 않습니다. Chrome 최신 버전에서 사용해 주세요.");
@@ -1055,23 +900,6 @@ async function captureExternalActualScreen() {
       stream.getTracks().forEach((track) => track.stop());
     }
   }
-}
-
-async function loadPixelFrame(frame, pageCheck, pageUrl, flowSteps = []) {
-  frame.removeAttribute("src");
-  frame.removeAttribute("srcdoc");
-  if (pageCheck.embeddable) {
-    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups");
-    frame.src = pageUrl;
-    return;
-  }
-  const response = await fetch(pageCheck.proxyUrl, { method: "GET", cache: "no-store" });
-  const html = await response.text();
-  if (!response.ok) {
-    throw new Error(html || "PixelAudit 프록시 화면을 불러오지 못했습니다.");
-  }
-  frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups");
-  frame.srcdoc = injectPixelAutoFlow(html, flowSteps);
 }
 
 async function pixelLoadFrames() {
@@ -1162,11 +990,8 @@ async function pixelLaunchActual() {
   window.open(startUrl, "pixelaudit_actual_target", "width=430,height=940,noopener,noreferrer");
   state.pixelActualLoaded = true;
   state.pixelActualStartUrl = startUrl;
-  el.pixelActualFrame.removeAttribute("src");
-  el.pixelActualFrame.removeAttribute("srcdoc");
-  el.pixelPageFrame.removeAttribute("src");
-  el.pixelPageFrame.removeAttribute("srcdoc");
   el.pixelActualScreenshot.classList.add("hidden");
+  el.pixelOverlayActualScreenshot.classList.add("hidden");
   el.pixelActualFigmaImage.classList.add("hidden");
   el.pixelFigmaImage.classList.add("hidden");
   el.pixelEmptyState.classList.add("hidden");
@@ -1194,10 +1019,10 @@ async function pixelRender() {
   try {
     const actualDataUrl = await captureExternalActualScreen();
     const data = await loadPixelDesignData(figmaUrl);
-    el.pixelActualFrame.removeAttribute("src");
-    el.pixelActualFrame.removeAttribute("srcdoc");
     el.pixelActualScreenshot.src = actualDataUrl;
+    el.pixelOverlayActualScreenshot.src = actualDataUrl;
     el.pixelActualScreenshot.classList.remove("hidden");
+    el.pixelOverlayActualScreenshot.classList.remove("hidden");
     el.pixelActualFigmaImage.classList.remove("hidden");
     el.pixelFigmaImage.classList.remove("hidden");
     el.pixelEmptyState.classList.add("hidden");

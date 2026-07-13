@@ -589,7 +589,6 @@ button:disabled {
   overflow: hidden;
 }
 
-.pixel-stage iframe,
 .pixel-stage img {
   position: absolute;
   inset: 0;
@@ -597,17 +596,6 @@ button:disabled {
   height: 100%;
   border: 0;
   transform-origin: top left;
-}
-
-.pixel-stage iframe {
-  z-index: 1;
-  background: #fff;
-}
-
-#pixelActualFrame,
-#pixelPageFrame {
-  top: var(--actual-offset-top);
-  bottom: auto;
 }
 
 .pixel-stage img {

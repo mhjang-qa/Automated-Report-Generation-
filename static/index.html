@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notion Ticket Analyzer</title>
-    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-5" />
+    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-6" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -237,10 +237,6 @@
                 진입 URL
                 <input id="pixelStartUrl" type="url" placeholder="비워두면 실제 URL 또는 서비스별 우회 경로 사용" />
               </label>
-              <label>
-                자동 클릭
-                <input id="pixelAutoFlow" type="text" placeholder="외부 탭 직접 이동 방식에서는 사용하지 않음" />
-              </label>
             </div>
 
             <div class="form-grid">
@@ -355,7 +351,6 @@
                   <span>Web 360</span>
                 </div>
                 <div id="pixelActualStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
-                  <iframe id="pixelActualFrame" title="실제 웹 화면 단독" sandbox="allow-scripts allow-forms allow-popups"></iframe>
                   <img id="pixelActualScreenshot" class="hidden" alt="캡처한 실제 화면" />
                   <img id="pixelActualFigmaImage" class="hidden" alt="현재 실제 화면 위 Figma overlay" />
                   <div class="pixel-exclude-mask top">Diff 제외</div>
@@ -370,7 +365,7 @@
                   <span>Opacity · X/Y · Scale 적용</span>
                 </div>
                 <div id="pixelStage" class="pixel-stage pixel-stage-overlay" style="width: 360px; height: 800px;">
-                  <iframe id="pixelPageFrame" title="실제 웹 화면 overlay" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+                  <img id="pixelOverlayActualScreenshot" class="hidden" alt="Overlay 실제 화면 캡처" />
                   <img id="pixelFigmaImage" alt="Figma Frame overlay" />
                   <div class="pixel-exclude-mask top">Diff 제외</div>
                   <div class="pixel-exclude-mask bottom">Diff 제외</div>
@@ -382,6 +377,6 @@
         </section>
       </div>
     </main>
-    <script src="/app.js?v=pixelaudit-20260713-5"></script>
+    <script src="/app.js?v=pixelaudit-20260713-6"></script>
   </body>
 </html>
