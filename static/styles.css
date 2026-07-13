@@ -540,10 +540,15 @@ button:disabled {
   background-size: 8px 8px;
   --exclude-top: 52px;
   --exclude-bottom: 34px;
+  --actual-offset-top: 52px;
 }
 
 .pixel-stage-single {
   overflow: auto;
+}
+
+#pixelActualStage {
+  overflow: hidden;
 }
 
 .pixel-stage iframe,
@@ -559,6 +564,12 @@ button:disabled {
 .pixel-stage iframe {
   z-index: 1;
   background: #fff;
+}
+
+#pixelActualFrame,
+#pixelPageFrame {
+  top: var(--actual-offset-top);
+  bottom: auto;
 }
 
 .pixel-stage img {

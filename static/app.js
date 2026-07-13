@@ -645,12 +645,13 @@ function applyPixelStage() {
     stage.style.height = `${viewport.height}px`;
     stage.style.setProperty("--exclude-top", `${excludeTop}px`);
     stage.style.setProperty("--exclude-bottom", `${excludeBottom}px`);
+    stage.style.setProperty("--actual-offset-top", `${excludeTop}px`);
     stage.classList.toggle("exclude-disabled", !excludeEnabled);
   });
   el.pixelFigmaImage.style.opacity = String(opacity / 100);
   el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
   el.pixelFigmaImage.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
-  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Diff ${viewport.width} × ${compareHeight}`;
+  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${excludeTop}px · Diff ${viewport.width} × ${compareHeight}`;
 }
 
 function pixelNodeId() {
