@@ -118,6 +118,7 @@ const el = {
   pixelStage: document.querySelector("#pixelStage"),
   pixelFigmaOnlyImage: document.querySelector("#pixelFigmaOnlyImage"),
   pixelActualFrame: document.querySelector("#pixelActualFrame"),
+  pixelActualScreenshot: document.querySelector("#pixelActualScreenshot"),
   pixelActualFigmaImage: document.querySelector("#pixelActualFigmaImage"),
   pixelPageFrame: document.querySelector("#pixelPageFrame"),
   pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
@@ -697,6 +698,9 @@ function applyPixelStage() {
     image.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
     image.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
   });
+  el.pixelActualScreenshot.style.opacity = "1";
+  el.pixelActualScreenshot.style.transform = "none";
+  el.pixelActualScreenshot.style.clipPath = "none";
   el.pixelReadout.textContent = `Mode ${targetMode.toUpperCase()} · X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${actualOffsetTop}px · Diff ${viewport.width} × ${compareHeight}`;
 }
 
@@ -1000,6 +1004,59 @@ function injectPixelAutoFlow(html, steps) {
   return html + script;
 }
 
+async function captureExternalActualScreen() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    throw new Error("현재 브라우저는 화면 캡처를 지원하지 않습니다. Chrome 최신 버전에서 사용해 주세요.");
+  }
+  const viewport = pixelViewport();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: "browser",
+        width: { ideal: viewport.width },
+        height: { ideal: viewport.height },
+        frameRate: { ideal: 1, max: 5 },
+      },
+      audio: false,
+    });
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await video.play();
+    await new Promise((resolve) => {
+      if (video.videoWidth && video.videoHeight) {
+        resolve();
+        return;
+      }
+      video.onloadedmetadata = resolve;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d");
+    const sourceWidth = video.videoWidth || viewport.width;
+    const sourceHeight = video.videoHeight || viewport.height;
+    const scale = Math.max(viewport.width / sourceWidth, viewport.height / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    const dx = (viewport.width - drawWidth) / 2;
+    const dy = (viewport.height - drawHeight) / 2;
+    ctx.drawImage(video, dx, dy, drawWidth, drawHeight);
+    return canvas.toDataURL("image/png");
+  } catch (error) {
+    if (error && error.name === "NotAllowedError") {
+      throw new Error("화면 캡처 권한이 취소되었습니다. 현재 화면 검증을 누른 뒤 실제 화면 탭/창을 선택해 주세요.");
+    }
+    throw error;
+  } finally {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+  }
+}
+
 async function loadPixelFrame(frame, pageCheck, pageUrl, flowSteps = []) {
   frame.removeAttribute("src");
   frame.removeAttribute("srcdoc");
@@ -1101,38 +1158,22 @@ async function pixelLaunchActual() {
     showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
     return;
   }
-  state.pixelBusy = true;
-  syncButtons();
-  showPixelMessage("실제 화면을 여는 중입니다. 화면이 뜨면 직접 목표 화면까지 이동한 뒤 현재 화면 검증을 누르세요.");
-  try {
-    const startUrl = pixelStartUrl(pageUrl);
-    const flowSteps = pixelFlowSteps();
-    const pageCheck = await apiPost("/api/pixel/page-check", { url: startUrl });
-    await loadPixelFrame(el.pixelActualFrame, pageCheck, startUrl, flowSteps);
-    el.pixelPageFrame.removeAttribute("src");
-    el.pixelPageFrame.removeAttribute("srcdoc");
-    el.pixelActualFigmaImage.classList.add("hidden");
-    el.pixelFigmaImage.classList.add("hidden");
-    el.pixelEmptyState.classList.add("hidden");
-    el.pixelCompareGrid.classList.remove("hidden");
-    applyPixelStage();
-    const flowText = flowSteps.length ? ` · 자동 클릭 ${flowSteps.join(" > ")}` : "";
-    const startText = startUrl !== pageUrl ? ` · 진입 ${startUrl}${flowText}` : flowText;
-    state.pixelActualLoaded = true;
-    state.pixelActualStartUrl = startUrl;
-    el.pixelMeta.textContent = `실제 화면 수동 이동 준비 · ${pixelViewport().width} × ${pixelViewport().height}`;
-    if (pageCheck.embeddable) {
-      showPixelMessage(`실제 화면을 열었습니다.${startText} · 목표 화면까지 직접 이동한 뒤 현재 화면 검증을 누르세요.`, "success");
-    } else {
-      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${startText} · 목표 화면까지 직접 이동한 뒤 현재 화면 검증을 누르세요.`, "success");
-    }
-  } catch (error) {
-    console.error(error);
-    showPixelMessage(error.message, "error");
-  } finally {
-    state.pixelBusy = false;
-    syncButtons();
-  }
+  const startUrl = pixelStartUrl(pageUrl);
+  window.open(startUrl, "pixelaudit_actual_target", "width=430,height=940,noopener,noreferrer");
+  state.pixelActualLoaded = true;
+  state.pixelActualStartUrl = startUrl;
+  el.pixelActualFrame.removeAttribute("src");
+  el.pixelActualFrame.removeAttribute("srcdoc");
+  el.pixelPageFrame.removeAttribute("src");
+  el.pixelPageFrame.removeAttribute("srcdoc");
+  el.pixelActualScreenshot.classList.add("hidden");
+  el.pixelActualFigmaImage.classList.add("hidden");
+  el.pixelFigmaImage.classList.add("hidden");
+  el.pixelEmptyState.classList.add("hidden");
+  el.pixelCompareGrid.classList.remove("hidden");
+  applyPixelStage();
+  el.pixelMeta.textContent = `외부 실제 화면 이동 중 · ${pixelViewport().width} × ${pixelViewport().height}`;
+  showPixelMessage(`외부 창을 열었습니다. 그 창에서 목표 화면까지 직접 이동한 뒤 현재 화면 검증을 누르고 해당 창/탭을 선택하세요. · 진입 ${startUrl}`, "success");
 }
 
 async function pixelRender() {
@@ -1147,24 +1188,26 @@ async function pixelRender() {
     showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
     return;
   }
-  if (!state.pixelActualLoaded) {
-    showPixelMessage("먼저 실제 화면 열기를 누르고, 실제 화면에서 목표 화면까지 이동해 주세요.", "error");
-    return;
-  }
   state.pixelBusy = true;
   syncButtons();
-  showPixelMessage("현재 실제 화면 위에 Figma 기준을 적용하는 중입니다.");
+  showPixelMessage("화면 선택창에서 목표 화면이 열린 실제 탭/창을 선택해 주세요.");
   try {
+    const actualDataUrl = await captureExternalActualScreen();
     const data = await loadPixelDesignData(figmaUrl);
+    el.pixelActualFrame.removeAttribute("src");
+    el.pixelActualFrame.removeAttribute("srcdoc");
+    el.pixelActualScreenshot.src = actualDataUrl;
+    el.pixelActualScreenshot.classList.remove("hidden");
     el.pixelActualFigmaImage.classList.remove("hidden");
     el.pixelFigmaImage.classList.remove("hidden");
     el.pixelEmptyState.classList.add("hidden");
     el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
-    el.pixelMeta.textContent = `${data.frameName || data.nodeId} · 현재 실제 화면 검증 · ${pixelViewport().width} × ${pixelViewport().height}`;
+    state.pixelActualLoaded = true;
+    el.pixelMeta.textContent = `${data.frameName || data.nodeId} · 외부 실제 화면 캡처 검증 · ${pixelViewport().width} × ${pixelViewport().height}`;
     const cacheText = data.cached ? " · Figma 캐시 사용" : "";
     const warningText = data.warning ? ` · ${data.warning}` : "";
-    showPixelMessage(`현재 화면 검증을 준비했습니다.${cacheText}${warningText}`, "success");
+    showPixelMessage(`외부 실제 화면을 캡처해 검증을 준비했습니다.${cacheText}${warningText}`, "success");
   } catch (error) {
     console.error(error);
     showPixelMessage(error.message, "error");

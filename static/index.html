@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notion Ticket Analyzer</title>
-    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-4" />
+    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-5" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -239,7 +239,7 @@
               </label>
               <label>
                 자동 클릭
-                <input id="pixelAutoFlow" type="text" placeholder="예: 로그인하기|로그인, 회원가입" />
+                <input id="pixelAutoFlow" type="text" placeholder="외부 탭 직접 이동 방식에서는 사용하지 않음" />
               </label>
             </div>
 
@@ -356,6 +356,7 @@
                 </div>
                 <div id="pixelActualStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
                   <iframe id="pixelActualFrame" title="실제 웹 화면 단독" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+                  <img id="pixelActualScreenshot" class="hidden" alt="캡처한 실제 화면" />
                   <img id="pixelActualFigmaImage" class="hidden" alt="현재 실제 화면 위 Figma overlay" />
                   <div class="pixel-exclude-mask top">Diff 제외</div>
                   <div class="pixel-exclude-mask bottom">Diff 제외</div>
@@ -381,6 +382,6 @@
         </section>
       </div>
     </main>
-    <script src="/app.js?v=pixelaudit-20260713-4"></script>
+    <script src="/app.js?v=pixelaudit-20260713-5"></script>
   </body>
 </html>
