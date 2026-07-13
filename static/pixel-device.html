@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PixelAudit Web AVD 360</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eef2f5;
+        --panel: #ffffff;
+        --ink: #1f2933;
+        --muted: #697586;
+        --line: #d8dee8;
+        --accent: #1769aa;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      .launcher {
+        width: min(100%, 430px);
+        margin: 0 auto;
+        padding: 18px 14px 24px;
+      }
+
+      .toolbar {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      h1,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 18px;
+        line-height: 1.2;
+      }
+
+      p {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .url-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      input,
+      button {
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+      }
+
+      input {
+        min-width: 0;
+        padding: 0 10px;
+      }
+
+      button {
+        padding: 0 12px;
+        background: var(--accent);
+        color: #ffffff;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .device {
+        width: 390px;
+        margin: 0 auto;
+        padding: 12px 14px 16px;
+        border: 1px solid #cfd8e3;
+        border-radius: 30px;
+        background: #111827;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 30px;
+        padding: 0 16px;
+        border-radius: 20px 20px 0 0;
+        background: #f8fafc;
+        color: #111827;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .screen {
+        position: relative;
+        width: 360px;
+        height: 800px;
+        overflow: hidden;
+        border: 0;
+        background: #ffffff;
+      }
+
+      iframe {
+        width: 360px;
+        height: 800px;
+        border: 0;
+        background: #ffffff;
+      }
+
+      .home-indicator {
+        width: 132px;
+        height: 5px;
+        margin: 10px auto 0;
+        border-radius: 99px;
+        background: #d1d5db;
+      }
+
+      .message {
+        min-height: 20px;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="launcher">
+      <section class="toolbar">
+        <div>
+          <h1>PixelAudit Web AVD 360</h1>
+          <p>360 × 800 가상 웹 단말 런처</p>
+        </div>
+        <div class="url-row">
+          <input id="urlInput" type="url" placeholder="https://example.com" />
+          <button id="launchBtn" type="button">Launch</button>
+        </div>
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="device" aria-label="Web AVD 360 device">
+        <div class="status">
+          <span>9:41</span>
+          <span>Web AVD 360</span>
+          <span>LTE 100%</span>
+        </div>
+        <div class="screen">
+          <iframe id="deviceFrame" title="가상 웹 단말 화면" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+        <div class="home-indicator"></div>
+      </section>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const urlInput = document.querySelector("#urlInput");
+      const launchBtn = document.querySelector("#launchBtn");
+      const frame = document.querySelector("#deviceFrame");
+      const message = document.querySelector("#message");
+
+      urlInput.value = params.get("url") || "";
+
+      async function apiPost(path, payload) {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.message || "요청 처리에 실패했습니다.");
+        }
+        return data;
+      }
+
+      async function launch() {
+        const url = urlInput.value.trim();
+        if (!url) {
+          message.textContent = "URL을 입력해 주세요.";
+          return;
+        }
+        message.textContent = "URL 상태를 확인하는 중입니다.";
+        try {
+          const check = await apiPost("/api/pixel/page-check", { url });
+          frame.src = check.embeddable ? url : check.proxyUrl;
+          message.textContent = check.embeddable
+            ? "직접 iframe으로 표시합니다."
+            : `iframe 차단 헤더(${check.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.`;
+        } catch (error) {
+          message.textContent = error.message;
+        }
+      }
+
+      launchBtn.addEventListener("click", launch);
+      urlInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") launch();
+      });
+
+      if (urlInput.value) {
+        launch();
+      }
+    </script>
+  </body>
+</html>

@@ -90,6 +90,7 @@ const el = {
   pixelMessage: document.querySelector("#pixelMessage"),
   pixelLoadFramesBtn: document.querySelector("#pixelLoadFramesBtn"),
   pixelRenderBtn: document.querySelector("#pixelRenderBtn"),
+  pixelDeviceBtn: document.querySelector("#pixelDeviceBtn"),
   pixelOpenUrlBtn: document.querySelector("#pixelOpenUrlBtn"),
   pixelOpacity: document.querySelector("#pixelOpacity"),
   pixelOffsetX: document.querySelector("#pixelOffsetX"),
@@ -225,6 +226,7 @@ function syncButtons() {
   el.downloadEmbedHtmlBtn.disabled = !state.embedHtml;
   el.pixelLoadFramesBtn.disabled = state.pixelBusy;
   el.pixelRenderBtn.disabled = state.pixelBusy;
+  el.pixelDeviceBtn.disabled = state.pixelBusy;
 }
 
 function setPreview(node, value, emptyText) {
@@ -724,6 +726,16 @@ function pixelOpenUrl() {
   window.open(pageUrl, "_blank", "noopener,noreferrer");
 }
 
+function pixelOpenDevice() {
+  const pageUrl = el.pixelPageUrl.value.trim();
+  if (!pageUrl) {
+    showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
+    return;
+  }
+  const launcherUrl = `/pixel-device.html?url=${encodeURIComponent(pageUrl)}&width=360&height=800`;
+  window.open(launcherUrl, "pixelaudit_web_avd_360", "width=430,height=940,noopener,noreferrer");
+}
+
 el.analyzeBtn.addEventListener("click", analyze);
 el.registerBtn.addEventListener("click", registerSummary);
 el.generateTcBtn.addEventListener("click", generateTc);
@@ -748,6 +760,7 @@ el.pixelOffsetY.addEventListener("input", applyPixelStage);
 el.pixelScale.addEventListener("input", applyPixelStage);
 el.pixelLoadFramesBtn.addEventListener("click", pixelLoadFrames);
 el.pixelRenderBtn.addEventListener("click", pixelRender);
+el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
 el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
