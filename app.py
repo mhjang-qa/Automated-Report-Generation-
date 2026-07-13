@@ -37,6 +37,8 @@ DEFAULT_NOTION_IMAGE_LIMIT = 4
 DEFAULT_NOTION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 DEFAULT_PIXEL_PROXY_MAX_BYTES = 2 * 1024 * 1024
 PIXELAUDIT_MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+DEFAULT_FIGMA_RENDER_CACHE_TTL_SECONDS = 60 * 60 * 6
+DEFAULT_FIGMA_RENDER_CACHE_MAX_ITEMS = 24
 GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
 ACTIVE_ANALYZE_LOCK = threading.Lock()
 ACTIVE_ANALYZE_KEYS = set()
@@ -44,6 +46,8 @@ GEMINI_LIMIT_LOCK = threading.Lock()
 GEMINI_LIMIT_UNTIL = 0.0
 GEMINI_LIMIT_REASON = ""
 GEMINI_LIMIT_DETAILS = {}
+FIGMA_RENDER_CACHE_LOCK = threading.Lock()
+FIGMA_RENDER_CACHE = {}
 
 
 class UserFacingError(Exception):
@@ -1192,16 +1196,60 @@ def figma_frames(payload):
     return {"frames": frames}
 
 
+def figma_render_cache_key(file_key, node_id, scale):
+    raw = json.dumps({"fileKey": file_key, "nodeId": node_id, "scale": str(scale)}, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def get_figma_render_cache(cache_key, allow_stale=False):
+    ttl = env_int("FIGMA_RENDER_CACHE_TTL_SECONDS", DEFAULT_FIGMA_RENDER_CACHE_TTL_SECONDS)
+    now = time.time()
+    with FIGMA_RENDER_CACHE_LOCK:
+        entry = FIGMA_RENDER_CACHE.get(cache_key)
+        if not entry:
+            return None
+        age = now - entry["storedAt"]
+        if not allow_stale and age > ttl:
+            return None
+        result = dict(entry["result"])
+        result["cached"] = True
+        result["cacheAgeSeconds"] = round(age)
+        result["cacheStale"] = age > ttl
+        return result
+
+
+def set_figma_render_cache(cache_key, result):
+    max_items = env_int("FIGMA_RENDER_CACHE_MAX_ITEMS", DEFAULT_FIGMA_RENDER_CACHE_MAX_ITEMS)
+    with FIGMA_RENDER_CACHE_LOCK:
+        FIGMA_RENDER_CACHE[cache_key] = {"storedAt": time.time(), "result": dict(result)}
+        if len(FIGMA_RENDER_CACHE) > max_items:
+            oldest_key = min(FIGMA_RENDER_CACHE, key=lambda key: FIGMA_RENDER_CACHE[key]["storedAt"])
+            FIGMA_RENDER_CACHE.pop(oldest_key, None)
+
+
 def figma_render(payload):
     parsed = parse_figma_url(payload.get("figmaUrl") or payload.get("figma_url") or "") if payload.get("figmaUrl") or payload.get("figma_url") else {}
     file_key = payload.get("fileKey") or payload.get("file_key") or parsed.get("fileKey")
     node_id = payload.get("nodeId") or payload.get("node_id") or parsed.get("nodeId")
     if not file_key or not node_id:
         raise UserFacingError("Figma file key와 node-id가 필요합니다.", 400)
-    data = figma_api_request(
-        f"/images/{file_key}",
-        {"ids": node_id, "format": "png", "scale": str(payload.get("scale") or "1")},
-    )
+    scale = str(payload.get("scale") or "1")
+    cache_key = figma_render_cache_key(file_key, node_id, scale)
+    cached = get_figma_render_cache(cache_key)
+    if cached:
+        return cached
+    try:
+        data = figma_api_request(
+            f"/images/{file_key}",
+            {"ids": node_id, "format": "png", "scale": scale},
+        )
+    except UserFacingError as exc:
+        if exc.status == 429:
+            stale = get_figma_render_cache(cache_key, allow_stale=True)
+            if stale:
+                stale["warning"] = "Figma API 호출 제한으로 최근 캐시 이미지를 사용했습니다."
+                return stale
+        raise
     image_url = (data.get("images") or {}).get(node_id)
     if not image_url:
         raise UserFacingError("Figma 이미지 생성에 실패했습니다. node-id를 확인해 주세요.", 502)
@@ -1213,13 +1261,16 @@ def figma_render(payload):
     if len(image_bytes) > env_int("FIGMA_IMAGE_MAX_BYTES", 8 * 1024 * 1024):
         raise UserFacingError("Figma 이미지가 허용 크기를 초과했습니다.", 413)
     data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
-    return {
+    result = {
         "fileKey": file_key,
         "nodeId": node_id,
         "frameName": parsed.get("frameName", ""),
         "imageDataUrl": data_url,
         "byteLength": len(image_bytes),
+        "cached": False,
     }
+    set_figma_render_cache(cache_key, result)
+    return result
 
 
 def validate_pixel_page_url(raw_url):

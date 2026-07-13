@@ -13,6 +13,8 @@ const state = {
   embedBusy: false,
   pixelBusy: false,
   pixelImageDataUrl: "",
+  pixelRenderCacheKey: "",
+  pixelRenderData: null,
   pixelParsed: null,
   loginBusy: false,
   isAnalyzing: false,
@@ -664,6 +666,39 @@ function pixelNodeId() {
   return el.pixelFrameSelect.value || (state.pixelParsed && state.pixelParsed.nodeId) || "";
 }
 
+function pixelLocalRenderCacheKey(renderCacheKey) {
+  return `pixelaudit:figma-render:${renderCacheKey}`;
+}
+
+function getPixelLocalRenderCache(renderCacheKey) {
+  try {
+    const raw = localStorage.getItem(pixelLocalRenderCacheKey(renderCacheKey));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.imageDataUrl) return null;
+    data.cached = true;
+    data.localCached = true;
+    return data;
+  } catch (error) {
+    return null;
+  }
+}
+
+function setPixelLocalRenderCache(renderCacheKey, data) {
+  try {
+    localStorage.setItem(pixelLocalRenderCacheKey(renderCacheKey), JSON.stringify({
+      fileKey: data.fileKey,
+      nodeId: data.nodeId,
+      frameName: data.frameName,
+      imageDataUrl: data.imageDataUrl,
+      byteLength: data.byteLength,
+      storedAt: Date.now(),
+    }));
+  } catch (error) {
+    // Large Figma PNG data URLs can exceed browser storage quota. Server cache still applies.
+  }
+}
+
 function pixelSpecialStartUrl(pageUrl) {
   try {
     const url = new URL(pageUrl);
@@ -764,10 +799,89 @@ async function runPixelAutoFlow(frame, steps) {
   }
 }
 
+function pixelAutoFlowScript(steps) {
+  if (!steps.length) return "";
+  const safeSteps = JSON.stringify(steps).replace(/</g, "\\u003c");
+  return `<script>
+    (function () {
+      var steps = ${safeSteps};
+      function wait(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+      }
+      function collect(root, result) {
+        result = result || [];
+        if (!root || !root.querySelectorAll) return result;
+        root.querySelectorAll("*").forEach(function (node) {
+          result.push(node);
+          if (node.shadowRoot) collect(node.shadowRoot, result);
+        });
+        return result;
+      }
+      function visible(node) {
+        var rect = node.getBoundingClientRect();
+        var style = window.getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+      function find(keyword) {
+        var normalized = keyword.replace(/\\s+/g, "");
+        return collect(document).filter(function (node) {
+          var text = (node.innerText || node.textContent || node.getAttribute("aria-label") || "").replace(/\\s+/g, "");
+          return text.indexOf(normalized) > -1 && visible(node);
+        }).sort(function (left, right) {
+          var leftRect = left.getBoundingClientRect();
+          var rightRect = right.getBoundingClientRect();
+          return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
+        }).map(function (node) {
+          return node.closest("button,a,[role='button'],label") || node;
+        }).find(visible);
+      }
+      async function clickStep(step) {
+        var keywords = step.split("|").map(function (item) { return item.trim(); }).filter(Boolean);
+        var deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          var target = keywords.map(find).find(Boolean);
+          if (target) {
+            target.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, view: window }));
+            target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+            target.click();
+            target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+            target.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, cancelable: true, view: window }));
+            await wait(900);
+            return;
+          }
+          await wait(500);
+        }
+        console.warn("PixelAudit auto flow target not found:", step);
+      }
+      async function run() {
+        await wait(1200);
+        for (var index = 0; index < steps.length; index += 1) {
+          await clickStep(steps[index]);
+        }
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", run, { once: true });
+      } else {
+        run();
+      }
+    })();
+  <\/script>`;
+}
+
+function injectPixelAutoFlow(html, steps) {
+  const script = pixelAutoFlowScript(steps);
+  if (!script) return html;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${script}</body>`);
+  }
+  return html + script;
+}
+
 async function loadPixelFrame(frame, pageCheck, pageUrl, flowSteps = []) {
   frame.removeAttribute("src");
   frame.removeAttribute("srcdoc");
   if (pageCheck.embeddable) {
+    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups");
     frame.src = pageUrl;
     return;
   }
@@ -776,8 +890,8 @@ async function loadPixelFrame(frame, pageCheck, pageUrl, flowSteps = []) {
   if (!response.ok) {
     throw new Error(html || "PixelAudit 프록시 화면을 불러오지 못했습니다.");
   }
-  frame.srcdoc = html;
-  await runPixelAutoFlow(frame, flowSteps);
+  frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups");
+  frame.srcdoc = injectPixelAutoFlow(html, flowSteps);
 }
 
 async function pixelLoadFrames() {
@@ -833,10 +947,32 @@ async function pixelRender() {
     if (!state.pixelParsed) {
       state.pixelParsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
     }
-    const data = await apiPost("/api/pixel/figma-render", {
-      figmaUrl,
-      nodeId: pixelNodeId(),
-    });
+    const nodeId = pixelNodeId();
+    const renderCacheKey = `${figmaUrl}::${nodeId}`;
+    let data = state.pixelRenderCacheKey === renderCacheKey && state.pixelRenderData
+      ? state.pixelRenderData
+      : getPixelLocalRenderCache(renderCacheKey);
+    if (!data) {
+      try {
+        data = await apiPost("/api/pixel/figma-render", {
+          figmaUrl,
+          nodeId,
+        });
+        setPixelLocalRenderCache(renderCacheKey, data);
+      } catch (error) {
+        const localCache = getPixelLocalRenderCache(renderCacheKey);
+        if (error.status === 429 && localCache) {
+          data = {
+            ...localCache,
+            warning: "Figma API 호출 제한으로 브라우저 캐시 이미지를 사용했습니다.",
+          };
+        } else {
+          throw error;
+        }
+      }
+    }
+    state.pixelRenderCacheKey = renderCacheKey;
+    state.pixelRenderData = data;
     state.pixelImageDataUrl = data.imageDataUrl;
     el.pixelFigmaImage.src = state.pixelImageDataUrl;
     el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
@@ -851,12 +987,14 @@ async function pixelRender() {
     el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
     el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
+    const cacheText = data.cached ? " · Figma 캐시 사용" : "";
+    const warningText = data.warning ? ` · ${data.warning}` : "";
     const flowText = flowSteps.length ? ` · 자동 클릭 ${flowSteps.join(" > ")}` : "";
     const startText = startUrl !== pageUrl ? ` · 진입 ${startUrl}${flowText}` : flowText;
     if (pageCheck.embeddable) {
-      showPixelMessage(`비교 화면을 준비했습니다.${startText}`, "success");
+      showPixelMessage(`비교 화면을 준비했습니다.${cacheText}${warningText}${startText}`, "success");
     } else {
-      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${startText}`, "success");
+      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${cacheText}${warningText}${startText}`, "success");
     }
   } catch (error) {
     console.error(error);
