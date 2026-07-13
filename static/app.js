@@ -15,6 +15,8 @@ const state = {
   pixelImageDataUrl: "",
   pixelRenderCacheKey: "",
   pixelRenderData: null,
+  pixelActualLoaded: false,
+  pixelActualStartUrl: "",
   pixelParsed: null,
   loginBusy: false,
   isAnalyzing: false,
@@ -95,6 +97,7 @@ const el = {
   pixelHeight: document.querySelector("#pixelHeight"),
   pixelMessage: document.querySelector("#pixelMessage"),
   pixelLoadFramesBtn: document.querySelector("#pixelLoadFramesBtn"),
+  pixelLaunchActualBtn: document.querySelector("#pixelLaunchActualBtn"),
   pixelRenderBtn: document.querySelector("#pixelRenderBtn"),
   pixelDeviceBtn: document.querySelector("#pixelDeviceBtn"),
   pixelOpenUrlBtn: document.querySelector("#pixelOpenUrlBtn"),
@@ -115,6 +118,7 @@ const el = {
   pixelStage: document.querySelector("#pixelStage"),
   pixelFigmaOnlyImage: document.querySelector("#pixelFigmaOnlyImage"),
   pixelActualFrame: document.querySelector("#pixelActualFrame"),
+  pixelActualFigmaImage: document.querySelector("#pixelActualFigmaImage"),
   pixelPageFrame: document.querySelector("#pixelPageFrame"),
   pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
   pixelEmptyState: document.querySelector("#pixelEmptyState"),
@@ -241,6 +245,7 @@ function syncButtons() {
   el.copyEmbedHtmlBtn.disabled = !state.embedHtml;
   el.downloadEmbedHtmlBtn.disabled = !state.embedHtml;
   el.pixelLoadFramesBtn.disabled = state.pixelBusy;
+  el.pixelLaunchActualBtn.disabled = state.pixelBusy;
   el.pixelRenderBtn.disabled = state.pixelBusy;
   el.pixelDeviceBtn.disabled = state.pixelBusy;
 }
@@ -658,9 +663,11 @@ function applyPixelStage() {
     stage.style.setProperty("--actual-offset-top", `${actualOffsetTop}px`);
     stage.classList.toggle("exclude-disabled", !excludeEnabled);
   });
-  el.pixelFigmaImage.style.opacity = String(opacity / 100);
-  el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
-  el.pixelFigmaImage.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
+  [el.pixelFigmaImage, el.pixelActualFigmaImage].forEach((image) => {
+    image.style.opacity = String(opacity / 100);
+    image.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
+    image.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
+  });
   el.pixelReadout.textContent = `Mode ${targetMode.toUpperCase()} · X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${actualOffsetTop}px · Diff ${viewport.width} × ${compareHeight}`;
 }
 
@@ -763,18 +770,14 @@ function pixelSpecialStartUrl(pageUrl) {
   return pageUrl;
 }
 
-function pixelFlowSteps(pageUrl) {
+function pixelStartUrl(pageUrl) {
+  return el.pixelStartUrl.value.trim() || pixelSpecialStartUrl(pageUrl);
+}
+
+function pixelFlowSteps() {
   const raw = el.pixelAutoFlow.value.trim();
   if (raw) {
     return raw.split(/[,>\n]/).map((step) => step.trim()).filter(Boolean);
-  }
-  try {
-    const url = new URL(pageUrl);
-    if (url.hostname === "go.hanpass.com" && url.pathname.startsWith("/auth/visiting_signup")) {
-      return ["로그인하기|로그인", "회원가입"];
-    }
-  } catch (error) {
-    return [];
   }
   return [];
 }
@@ -980,6 +983,90 @@ async function pixelLoadFrames() {
   }
 }
 
+async function loadPixelDesignData(figmaUrl) {
+  if (!state.pixelParsed) {
+    state.pixelParsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
+  }
+  const nodeId = pixelNodeId();
+  const renderCacheKey = `${figmaUrl}::${nodeId}`;
+  let data = await getPixelManualRenderData(renderCacheKey, nodeId);
+  if (!data) {
+    data = state.pixelRenderCacheKey === renderCacheKey && state.pixelRenderData
+      ? state.pixelRenderData
+      : getPixelLocalRenderCache(renderCacheKey);
+  }
+  if (!data) {
+    try {
+      data = await apiPost("/api/pixel/figma-render", {
+        figmaUrl,
+        nodeId,
+      });
+      setPixelLocalRenderCache(renderCacheKey, data);
+    } catch (error) {
+      const localCache = getPixelLocalRenderCache(renderCacheKey);
+      if (error.status === 429 && localCache) {
+        data = {
+          ...localCache,
+          warning: "Figma API 호출 제한으로 브라우저 캐시 이미지를 사용했습니다.",
+        };
+      } else {
+        if (error.status === 429) {
+          error.message = "Figma API 호출 제한입니다. 캐시가 없는 최초 요청이면 Figma PNG 업로드 또는 Figma PNG URL 입력으로 우회할 수 있습니다.";
+        }
+        throw error;
+      }
+    }
+  }
+  state.pixelRenderCacheKey = renderCacheKey;
+  state.pixelRenderData = data;
+  state.pixelImageDataUrl = data.imageDataUrl;
+  el.pixelFigmaImage.src = state.pixelImageDataUrl;
+  el.pixelActualFigmaImage.src = state.pixelImageDataUrl;
+  el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
+  return data;
+}
+
+async function pixelLaunchActual() {
+  if (state.pixelBusy) return;
+  const pageUrl = el.pixelPageUrl.value.trim();
+  if (!pageUrl) {
+    showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
+    return;
+  }
+  state.pixelBusy = true;
+  syncButtons();
+  showPixelMessage("실제 화면을 여는 중입니다. 화면이 뜨면 직접 목표 화면까지 이동한 뒤 현재 화면 검증을 누르세요.");
+  try {
+    const startUrl = pixelStartUrl(pageUrl);
+    const flowSteps = pixelFlowSteps();
+    const pageCheck = await apiPost("/api/pixel/page-check", { url: startUrl });
+    await loadPixelFrame(el.pixelActualFrame, pageCheck, startUrl, flowSteps);
+    el.pixelPageFrame.removeAttribute("src");
+    el.pixelPageFrame.removeAttribute("srcdoc");
+    el.pixelActualFigmaImage.classList.add("hidden");
+    el.pixelFigmaImage.classList.add("hidden");
+    el.pixelEmptyState.classList.add("hidden");
+    el.pixelCompareGrid.classList.remove("hidden");
+    applyPixelStage();
+    const flowText = flowSteps.length ? ` · 자동 클릭 ${flowSteps.join(" > ")}` : "";
+    const startText = startUrl !== pageUrl ? ` · 진입 ${startUrl}${flowText}` : flowText;
+    state.pixelActualLoaded = true;
+    state.pixelActualStartUrl = startUrl;
+    el.pixelMeta.textContent = `실제 화면 수동 이동 준비 · ${pixelViewport().width} × ${pixelViewport().height}`;
+    if (pageCheck.embeddable) {
+      showPixelMessage(`실제 화면을 열었습니다.${startText} · 목표 화면까지 직접 이동한 뒤 현재 화면 검증을 누르세요.`, "success");
+    } else {
+      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${startText} · 목표 화면까지 직접 이동한 뒤 현재 화면 검증을 누르세요.`, "success");
+    }
+  } catch (error) {
+    console.error(error);
+    showPixelMessage(error.message, "error");
+  } finally {
+    state.pixelBusy = false;
+    syncButtons();
+  }
+}
+
 async function pixelRender() {
   if (state.pixelBusy) return;
   const figmaUrl = el.pixelFigmaUrl.value.trim();
@@ -992,68 +1079,24 @@ async function pixelRender() {
     showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
     return;
   }
+  if (!state.pixelActualLoaded) {
+    showPixelMessage("먼저 실제 화면 열기를 누르고, 실제 화면에서 목표 화면까지 이동해 주세요.", "error");
+    return;
+  }
   state.pixelBusy = true;
   syncButtons();
-  showPixelMessage("Figma Frame 이미지를 생성하는 중입니다.");
+  showPixelMessage("현재 실제 화면 위에 Figma 기준을 적용하는 중입니다.");
   try {
-    if (!state.pixelParsed) {
-      state.pixelParsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
-    }
-    const nodeId = pixelNodeId();
-    const renderCacheKey = `${figmaUrl}::${nodeId}`;
-    let data = await getPixelManualRenderData(renderCacheKey, nodeId);
-    if (!data) {
-      data = state.pixelRenderCacheKey === renderCacheKey && state.pixelRenderData
-        ? state.pixelRenderData
-        : getPixelLocalRenderCache(renderCacheKey);
-    }
-    if (!data) {
-      try {
-        data = await apiPost("/api/pixel/figma-render", {
-          figmaUrl,
-          nodeId,
-        });
-        setPixelLocalRenderCache(renderCacheKey, data);
-      } catch (error) {
-        const localCache = getPixelLocalRenderCache(renderCacheKey);
-        if (error.status === 429 && localCache) {
-          data = {
-            ...localCache,
-            warning: "Figma API 호출 제한으로 브라우저 캐시 이미지를 사용했습니다.",
-          };
-        } else {
-          if (error.status === 429) {
-            error.message = "Figma API 호출 제한입니다. 캐시가 없는 최초 요청이면 Figma PNG 업로드 또는 Figma PNG URL 입력으로 우회할 수 있습니다.";
-          }
-          throw error;
-        }
-      }
-    }
-    state.pixelRenderCacheKey = renderCacheKey;
-    state.pixelRenderData = data;
-    state.pixelImageDataUrl = data.imageDataUrl;
-    el.pixelFigmaImage.src = state.pixelImageDataUrl;
-    el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
-    const startUrl = el.pixelStartUrl.value.trim() || pixelSpecialStartUrl(pageUrl);
-    const flowSteps = pixelFlowSteps(pageUrl);
-    const pageCheck = await apiPost("/api/pixel/page-check", { url: startUrl });
-    await Promise.all([
-      loadPixelFrame(el.pixelPageFrame, pageCheck, startUrl, flowSteps),
-      loadPixelFrame(el.pixelActualFrame, pageCheck, startUrl, flowSteps),
-    ]);
+    const data = await loadPixelDesignData(figmaUrl);
+    el.pixelActualFigmaImage.classList.remove("hidden");
+    el.pixelFigmaImage.classList.remove("hidden");
     el.pixelEmptyState.classList.add("hidden");
     el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
-    el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
+    el.pixelMeta.textContent = `${data.frameName || data.nodeId} · 현재 실제 화면 검증 · ${pixelViewport().width} × ${pixelViewport().height}`;
     const cacheText = data.cached ? " · Figma 캐시 사용" : "";
     const warningText = data.warning ? ` · ${data.warning}` : "";
-    const flowText = flowSteps.length ? ` · 자동 클릭 ${flowSteps.join(" > ")}` : "";
-    const startText = startUrl !== pageUrl ? ` · 진입 ${startUrl}${flowText}` : flowText;
-    if (pageCheck.embeddable) {
-      showPixelMessage(`비교 화면을 준비했습니다.${cacheText}${warningText}${startText}`, "success");
-    } else {
-      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${cacheText}${warningText}${startText}`, "success");
-    }
+    showPixelMessage(`현재 화면 검증을 준비했습니다.${cacheText}${warningText}`, "success");
   } catch (error) {
     console.error(error);
     showPixelMessage(error.message, "error");
@@ -1105,6 +1148,14 @@ el.pixelFigmaImageFile.addEventListener("change", () => {
   state.pixelRenderCacheKey = "";
   state.pixelRenderData = null;
 });
+el.pixelPageUrl.addEventListener("input", () => {
+  state.pixelActualLoaded = false;
+  state.pixelActualStartUrl = "";
+});
+el.pixelStartUrl.addEventListener("input", () => {
+  state.pixelActualLoaded = false;
+  state.pixelActualStartUrl = "";
+});
 el.pixelViewportPreset.addEventListener("change", updatePixelViewportFromPreset);
 el.pixelWidth.addEventListener("input", applyPixelStage);
 el.pixelHeight.addEventListener("input", applyPixelStage);
@@ -1113,6 +1164,7 @@ el.pixelOffsetX.addEventListener("input", applyPixelStage);
 el.pixelOffsetY.addEventListener("input", applyPixelStage);
 el.pixelScale.addEventListener("input", applyPixelStage);
 el.pixelLoadFramesBtn.addEventListener("click", pixelLoadFrames);
+el.pixelLaunchActualBtn.addEventListener("click", pixelLaunchActual);
 el.pixelRenderBtn.addEventListener("click", pixelRender);
 el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);

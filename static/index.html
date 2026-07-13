@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notion Ticket Analyzer</title>
-    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-2" />
+    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-3" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -276,7 +276,8 @@
             <div id="pixelMessage" class="message" role="status" aria-live="polite"></div>
             <div class="actions embed-actions">
               <button id="pixelLoadFramesBtn" class="ghost" type="button">Frame 조회</button>
-              <button id="pixelRenderBtn" class="primary" type="button">비교 시작</button>
+              <button id="pixelLaunchActualBtn" class="ghost" type="button">실제 화면 열기</button>
+              <button id="pixelRenderBtn" class="primary" type="button">현재 화면 검증</button>
               <button id="pixelDeviceBtn" class="ghost" type="button">Web AVD 360</button>
               <button id="pixelOpenUrlBtn" class="ghost" type="button">URL 새 탭</button>
             </div>
@@ -355,6 +356,7 @@
                 </div>
                 <div id="pixelActualStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
                   <iframe id="pixelActualFrame" title="실제 웹 화면 단독" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+                  <img id="pixelActualFigmaImage" class="hidden" alt="현재 실제 화면 위 Figma overlay" />
                   <div class="pixel-exclude-mask top">Diff 제외</div>
                   <div class="pixel-exclude-mask bottom">Diff 제외</div>
                   <div class="pixel-compare-window"></div>
@@ -379,6 +381,6 @@
         </section>
       </div>
     </main>
-    <script src="/app.js?v=pixelaudit-20260713-2"></script>
+    <script src="/app.js?v=pixelaudit-20260713-3"></script>
   </body>
 </html>
