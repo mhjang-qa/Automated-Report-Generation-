@@ -36,6 +36,7 @@ DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
 DEFAULT_NOTION_IMAGE_LIMIT = 4
 DEFAULT_NOTION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 DEFAULT_PIXEL_PROXY_MAX_BYTES = 2 * 1024 * 1024
+PIXELAUDIT_MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
 ACTIVE_ANALYZE_LOCK = threading.Lock()
 ACTIVE_ANALYZE_KEYS = set()
@@ -1250,13 +1251,44 @@ def validate_pixel_page_url(raw_url):
     return parsed
 
 
+def pixelaudit_mobile_headers():
+    return {
+        "User-Agent": PIXELAUDIT_MOBILE_UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-CH-UA-Mobile": "?1",
+        "Sec-CH-UA-Platform": '"Android"',
+    }
+
+
+def pixelaudit_mobile_bootstrap(final_url):
+    parsed = urllib.parse.urlparse(final_url)
+    route_path = parsed.path or "/"
+    if parsed.query:
+        route_path += "?" + parsed.query
+    if parsed.fragment:
+        route_path += "#" + parsed.fragment
+    ua_json = json.dumps(PIXELAUDIT_MOBILE_UA)
+    route_json = json.dumps(route_path)
+    return (
+        "<script>"
+        "window.__PIXELAUDIT_MOBILE__=true;"
+        f"try{{history.replaceState(null,'',{route_json});}}catch(e){{}}"
+        f"try{{Object.defineProperty(navigator,'userAgent',{{get:function(){{return {ua_json};}},configurable:true}});}}catch(e){{}}"
+        "try{Object.defineProperty(navigator,'platform',{get:function(){return 'Linux armv8l';},configurable:true});}catch(e){}"
+        "try{Object.defineProperty(navigator,'maxTouchPoints',{get:function(){return 5;},configurable:true});}catch(e){}"
+        "try{Object.defineProperty(navigator,'userAgentData',{get:function(){return {mobile:true,platform:'Android',brands:[{brand:'Chromium',version:'125'}]};},configurable:true});}catch(e){}"
+        "</script>"
+    )
+
+
 def pixel_page_check(payload):
     raw_url = payload.get("url") or payload.get("pageUrl") or payload.get("page_url") or ""
     parsed = validate_pixel_page_url(raw_url)
     request = urllib.request.Request(
         urllib.parse.urlunparse(parsed),
         method="HEAD",
-        headers={"User-Agent": "PixelAudit/1.0"},
+        headers=pixelaudit_mobile_headers(),
     )
     headers = {}
     status = 0
@@ -1268,7 +1300,7 @@ def pixel_page_check(payload):
         status = exc.code
         headers = {key.lower(): value for key, value in exc.headers.items()}
     except urllib.error.URLError:
-        request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers={"User-Agent": "PixelAudit/1.0"})
+        request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers=pixelaudit_mobile_headers())
         with urllib.request.urlopen(request, timeout=15) as response:
             status = response.status
             headers = {key.lower(): value for key, value in response.headers.items()}
@@ -1287,7 +1319,7 @@ def pixel_page_check(payload):
 
 def fetch_pixel_proxy(raw_url):
     parsed = validate_pixel_page_url(raw_url)
-    request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers={"User-Agent": "PixelAudit/1.0"})
+    request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers=pixelaudit_mobile_headers())
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             content_type = response.headers.get("Content-Type", "text/html; charset=utf-8")
@@ -1305,10 +1337,17 @@ def fetch_pixel_proxy(raw_url):
         safe_url_chars = ":/?#[]@!$&'()*+,;=%"
         quoted_final_url = urllib.parse.quote(final_url, safe=safe_url_chars)
         base_tag = f'<base href="{quoted_final_url}">'
+        head_injection = base_tag + pixelaudit_mobile_bootstrap(final_url)
         if re.search(r"<head[^>]*>", text, flags=re.IGNORECASE):
-            text = re.sub(r"(<head[^>]*>)", r"\1" + base_tag, text, count=1, flags=re.IGNORECASE)
+            text = re.sub(
+                r"(<head[^>]*>)",
+                lambda match: match.group(1) + head_injection,
+                text,
+                count=1,
+                flags=re.IGNORECASE,
+            )
         else:
-            text = base_tag + text
+            text = head_injection + text
         body = text.encode("utf-8")
         content_type = "text/html; charset=utf-8"
     return body, content_type
