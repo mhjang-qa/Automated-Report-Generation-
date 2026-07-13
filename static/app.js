@@ -98,7 +98,12 @@ const el = {
   pixelScale: document.querySelector("#pixelScale"),
   pixelReadout: document.querySelector("#pixelReadout"),
   pixelMeta: document.querySelector("#pixelMeta"),
+  pixelCompareGrid: document.querySelector("#pixelCompareGrid"),
+  pixelFigmaStage: document.querySelector("#pixelFigmaStage"),
+  pixelActualStage: document.querySelector("#pixelActualStage"),
   pixelStage: document.querySelector("#pixelStage"),
+  pixelFigmaOnlyImage: document.querySelector("#pixelFigmaOnlyImage"),
+  pixelActualFrame: document.querySelector("#pixelActualFrame"),
   pixelPageFrame: document.querySelector("#pixelPageFrame"),
   pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
   pixelEmptyState: document.querySelector("#pixelEmptyState"),
@@ -628,8 +633,10 @@ function applyPixelStage() {
   const x = Number(el.pixelOffsetX.value) || 0;
   const y = Number(el.pixelOffsetY.value) || 0;
   const scale = Number(el.pixelScale.value) || 100;
-  el.pixelStage.style.width = `${viewport.width}px`;
-  el.pixelStage.style.height = `${viewport.height}px`;
+  [el.pixelFigmaStage, el.pixelActualStage, el.pixelStage].forEach((stage) => {
+    stage.style.width = `${viewport.width}px`;
+    stage.style.height = `${viewport.height}px`;
+  });
   el.pixelFigmaImage.style.opacity = String(opacity / 100);
   el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
   el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height}`;
@@ -698,9 +705,13 @@ async function pixelRender() {
     });
     state.pixelImageDataUrl = data.imageDataUrl;
     el.pixelFigmaImage.src = state.pixelImageDataUrl;
+    el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
     const pageCheck = await apiPost("/api/pixel/page-check", { url: pageUrl });
-    el.pixelPageFrame.src = pageCheck.embeddable ? pageUrl : pageCheck.proxyUrl;
+    const targetUrl = pageCheck.embeddable ? pageUrl : pageCheck.proxyUrl;
+    el.pixelPageFrame.src = targetUrl;
+    el.pixelActualFrame.src = targetUrl;
     el.pixelEmptyState.classList.add("hidden");
+    el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
     el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
     if (pageCheck.embeddable) {

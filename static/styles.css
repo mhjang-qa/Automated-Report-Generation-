@@ -481,6 +481,41 @@ button:disabled {
   overflow: auto;
 }
 
+.pixel-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.pixel-canvas-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.pixel-overlay-card {
+  grid-column: 1 / -1;
+}
+
+.pixel-canvas-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pixel-canvas-head strong {
+  font-size: 14px;
+}
+
+.pixel-canvas-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .pixel-stage {
   position: relative;
   overflow: hidden;
@@ -491,6 +526,10 @@ button:disabled {
     linear-gradient(to bottom, rgba(23, 105, 170, 0.08) 1px, transparent 1px),
     #fff;
   background-size: 8px 8px;
+}
+
+.pixel-stage-single {
+  overflow: auto;
 }
 
 .pixel-stage iframe,
@@ -516,11 +555,11 @@ button:disabled {
 }
 
 .pixel-empty {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
   display: grid;
   place-items: center;
+  min-height: 240px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
   padding: 24px;
   color: var(--muted);
   text-align: center;
@@ -551,9 +590,14 @@ button:disabled {
   .grid,
   .embed-layout,
   .pixel-layout,
+  .pixel-compare-grid,
   .form-grid,
   .target-row {
     grid-template-columns: 1fr;
+  }
+
+  .pixel-overlay-card {
+    grid-column: auto;
   }
 
   .actions {

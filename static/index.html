@@ -284,13 +284,41 @@
             <div class="panel-head">
               <div>
                 <h2>비교 Canvas</h2>
-                <span id="pixelMeta" class="meta">Figma 이미지와 실제 페이지를 같은 viewport에 배치합니다.</span>
+                <span id="pixelMeta" class="meta">비교 시작 후 Figma 기준, 실제 화면, Overlay 비교 영역을 분리해 표시합니다.</span>
               </div>
             </div>
-            <div id="pixelStage" class="pixel-stage" style="width: 360px; height: 800px;">
-              <iframe id="pixelPageFrame" title="실제 웹 화면" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-              <img id="pixelFigmaImage" alt="Figma Frame overlay" />
-              <div id="pixelEmptyState" class="pixel-empty">Figma 링크와 실제 URL을 입력한 뒤 비교를 시작하세요.</div>
+            <div id="pixelEmptyState" class="pixel-empty pixel-empty-panel">Figma 링크와 실제 URL을 입력한 뒤 비교 시작을 누르세요.</div>
+            <div id="pixelCompareGrid" class="pixel-compare-grid hidden">
+              <section class="pixel-canvas-card">
+                <div class="pixel-canvas-head">
+                  <strong>Figma 기준</strong>
+                  <span>Design PNG</span>
+                </div>
+                <div id="pixelFigmaStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
+                  <img id="pixelFigmaOnlyImage" alt="Figma Frame" />
+                </div>
+              </section>
+
+              <section class="pixel-canvas-card">
+                <div class="pixel-canvas-head">
+                  <strong>실제 화면</strong>
+                  <span>Web 360</span>
+                </div>
+                <div id="pixelActualStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
+                  <iframe id="pixelActualFrame" title="실제 웹 화면 단독" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                </div>
+              </section>
+
+              <section class="pixel-canvas-card pixel-overlay-card">
+                <div class="pixel-canvas-head">
+                  <strong>Overlay 비교</strong>
+                  <span>Opacity · X/Y · Scale 적용</span>
+                </div>
+                <div id="pixelStage" class="pixel-stage pixel-stage-overlay" style="width: 360px; height: 800px;">
+                  <iframe id="pixelPageFrame" title="실제 웹 화면 overlay" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                  <img id="pixelFigmaImage" alt="Figma Frame overlay" />
+                </div>
+              </section>
             </div>
           </article>
         </section>
