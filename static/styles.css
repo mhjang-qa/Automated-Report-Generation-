@@ -472,6 +472,44 @@ button:disabled {
   border-top: 1px solid var(--line);
 }
 
+.pixel-mode-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef2f7;
+}
+
+.pixel-mode-control label {
+  margin: 0;
+}
+
+.pixel-mode-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pixel-mode-control span {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pixel-mode-control input:checked + span {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.12);
+}
+
 .pixel-check {
   display: flex;
   align-items: center;

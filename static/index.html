@@ -260,6 +260,16 @@
             </div>
 
             <div class="pixel-controls">
+              <div class="pixel-mode-control" role="radiogroup" aria-label="비교 대상 타입">
+                <label>
+                  <input id="pixelModeWeb" name="pixelMode" type="radio" value="web" checked />
+                  <span>Web</span>
+                </label>
+                <label>
+                  <input id="pixelModeApp" name="pixelMode" type="radio" value="app" />
+                  <span>App</span>
+                </label>
+              </div>
               <label class="pixel-check">
                 <input id="pixelExcludeChrome" type="checkbox" checked />
                 단말 상/하단 영역 diff 제외

@@ -92,6 +92,8 @@ const el = {
   pixelRenderBtn: document.querySelector("#pixelRenderBtn"),
   pixelDeviceBtn: document.querySelector("#pixelDeviceBtn"),
   pixelOpenUrlBtn: document.querySelector("#pixelOpenUrlBtn"),
+  pixelModeWeb: document.querySelector("#pixelModeWeb"),
+  pixelModeApp: document.querySelector("#pixelModeApp"),
   pixelExcludeChrome: document.querySelector("#pixelExcludeChrome"),
   pixelExcludeTop: document.querySelector("#pixelExcludeTop"),
   pixelExcludeBottom: document.querySelector("#pixelExcludeBottom"),
@@ -640,18 +642,20 @@ function applyPixelStage() {
   const excludeTop = excludeEnabled ? Math.max(0, Number(el.pixelExcludeTop.value) || 0) : 0;
   const excludeBottom = excludeEnabled ? Math.max(0, Number(el.pixelExcludeBottom.value) || 0) : 0;
   const compareHeight = Math.max(0, viewport.height - excludeTop - excludeBottom);
+  const targetMode = el.pixelModeApp.checked ? "app" : "web";
+  const actualOffsetTop = targetMode === "web" ? excludeTop : 0;
   [el.pixelFigmaStage, el.pixelActualStage, el.pixelStage].forEach((stage) => {
     stage.style.width = `${viewport.width}px`;
     stage.style.height = `${viewport.height}px`;
     stage.style.setProperty("--exclude-top", `${excludeTop}px`);
     stage.style.setProperty("--exclude-bottom", `${excludeBottom}px`);
-    stage.style.setProperty("--actual-offset-top", `${excludeTop}px`);
+    stage.style.setProperty("--actual-offset-top", `${actualOffsetTop}px`);
     stage.classList.toggle("exclude-disabled", !excludeEnabled);
   });
   el.pixelFigmaImage.style.opacity = String(opacity / 100);
   el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
   el.pixelFigmaImage.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
-  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${excludeTop}px · Diff ${viewport.width} × ${compareHeight}`;
+  el.pixelReadout.textContent = `Mode ${targetMode.toUpperCase()} · X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Actual Y +${actualOffsetTop}px · Diff ${viewport.width} × ${compareHeight}`;
 }
 
 function pixelNodeId() {
@@ -801,6 +805,8 @@ el.pixelLoadFramesBtn.addEventListener("click", pixelLoadFrames);
 el.pixelRenderBtn.addEventListener("click", pixelRender);
 el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
+el.pixelModeWeb.addEventListener("change", applyPixelStage);
+el.pixelModeApp.addEventListener("change", applyPixelStage);
 el.pixelExcludeChrome.addEventListener("change", applyPixelStage);
 el.pixelExcludeTop.addEventListener("input", applyPixelStage);
 el.pixelExcludeBottom.addEventListener("input", applyPixelStage);
