@@ -256,19 +256,48 @@ function setPreview(node, value, emptyText) {
 }
 
 async function apiPost(path, payload) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const networkError = new Error("API 서버에 연결하지 못했습니다. Render 배포 상태와 네트워크를 확인해 주세요.");
+    networkError.status = 0;
+    networkError.cause = error;
+    throw networkError;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
-    const error = new Error(data.message || "요청 처리에 실패했습니다.");
+    const error = new Error(apiErrorMessage(path, res.status, data));
     error.status = res.status;
     error.data = data;
     throw error;
   }
   return data;
+}
+
+function apiErrorMessage(path, status, data) {
+  const message = data.message || "요청 처리에 실패했습니다.";
+  if (data.code === "FIGMA_RATE_LIMIT" || status === 429) {
+    const retry = data.retryAfterSeconds ? ` 약 ${data.retryAfterSeconds}초 후 재시도하거나` : "";
+    return `${message}${retry} Figma PNG 업로드/PNG URL 입력으로 우회할 수 있습니다.`;
+  }
+  if (path.startsWith("/api/pixel/figma") && (status === 401 || status === 403)) {
+    return `${message} Render 환경변수 FIGMA_ACCESS_TOKEN과 Figma 파일 공유 권한을 확인해 주세요.`;
+  }
+  if (path.startsWith("/api/pixel/figma") && status === 404) {
+    return `${message} Figma 링크의 file key와 node-id가 올바른지 확인해 주세요.`;
+  }
+  if (path === "/api/pixel/page-check" || path === "/api/pixel/proxy") {
+    return `${message} 실제 URL이 외부에서 접근 가능한지, 내부망/localhost 차단 대상이 아닌지 확인해 주세요.`;
+  }
+  if (status >= 500) {
+    return `${message} 서버 로그 또는 Render 배포 로그 확인이 필요합니다.`;
+  }
+  return message;
 }
 
 async function apiGet(path) {
@@ -717,6 +746,46 @@ function readPixelImageFile(file) {
   });
 }
 
+function validatePixelImageUrl(imageUrl) {
+  if (/^data:image\//i.test(imageUrl)) return;
+  let parsed;
+  try {
+    parsed = new URL(imageUrl);
+  } catch (error) {
+    throw new Error("Figma PNG URL 형식이 올바르지 않습니다.");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Figma PNG URL은 http(s) 또는 data:image 형식이어야 합니다.");
+  }
+  if (parsed.hostname.endsWith("figma.com") && /\/(design|file)\//.test(parsed.pathname)) {
+    throw new Error("Figma PNG URL에는 Figma 디자인 링크가 아니라 Export한 PNG 파일 URL 또는 PNG 업로드를 사용해 주세요.");
+  }
+}
+
+function ensurePixelImageLoads(imageUrl) {
+  return new Promise((resolve, reject) => {
+    if (!imageUrl) {
+      reject(new Error("Figma PNG URL이 비어 있습니다."));
+      return;
+    }
+    const image = new Image();
+    const timer = window.setTimeout(() => {
+      image.onload = null;
+      image.onerror = null;
+      reject(new Error("Figma PNG 이미지를 불러오지 못했습니다. URL이 직접 이미지인지 확인하거나 PNG 업로드를 사용해 주세요."));
+    }, 12000);
+    image.onload = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    image.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("Figma PNG URL이 이미지로 로드되지 않습니다. Figma 디자인 링크가 아닌 PNG 파일 URL을 넣어 주세요."));
+    };
+    image.src = imageUrl;
+  });
+}
+
 async function getPixelManualRenderData(renderCacheKey, nodeId) {
   const file = el.pixelFigmaImageFile.files && el.pixelFigmaImageFile.files[0];
   if (file) {
@@ -739,9 +808,8 @@ async function getPixelManualRenderData(renderCacheKey, nodeId) {
   }
   const imageUrl = el.pixelFigmaImageUrl.value.trim();
   if (!imageUrl) return null;
-  if (!/^data:image\//i.test(imageUrl) && !/^https?:\/\//i.test(imageUrl)) {
-    throw new Error("Figma PNG URL은 http(s) 또는 data:image 형식이어야 합니다.");
-  }
+  validatePixelImageUrl(imageUrl);
+  await ensurePixelImageLoads(imageUrl);
   const data = {
     fileKey: "manual-url",
     nodeId,
@@ -1173,6 +1241,11 @@ el.pixelModeApp.addEventListener("change", applyPixelStage);
 el.pixelExcludeChrome.addEventListener("change", applyPixelStage);
 el.pixelExcludeTop.addEventListener("input", applyPixelStage);
 el.pixelExcludeBottom.addEventListener("input", applyPixelStage);
+[el.pixelFigmaImage, el.pixelFigmaOnlyImage, el.pixelActualFigmaImage].forEach((image) => {
+  image.addEventListener("error", () => {
+    showPixelMessage("Figma PNG 이미지를 표시하지 못했습니다. PNG URL이 직접 이미지인지 확인하거나 PNG 업로드를 사용해 주세요.", "error");
+  });
+});
 el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyze();

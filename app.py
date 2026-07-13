@@ -1151,13 +1151,19 @@ def figma_api_request(path, query=None):
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         message = "Figma API 호출에 실패했습니다."
+        extra = {"code": "FIGMA_API_ERROR", "apiStatus": exc.code}
         if exc.code in {401, 403}:
             message = "Figma 접근 권한이 없습니다. 토큰 권한과 파일 공유 상태를 확인해 주세요."
+            extra["code"] = "FIGMA_AUTH_ERROR"
         elif exc.code == 404:
             message = "Figma 파일 또는 노드를 찾지 못했습니다."
+            extra["code"] = "FIGMA_NOT_FOUND"
         elif exc.code == 429:
-            message = "Figma API 호출 제한에 도달했습니다. 잠시 후 다시 시도해 주세요."
-        raise UserFacingError(message, exc.code)
+            retry_after = exc.headers.get("Retry-After", "")
+            retry_after_seconds = int(retry_after) if retry_after.isdigit() else 60
+            message = "Figma API 호출 제한에 도달했습니다. 잠시 후 다시 시도하거나 Figma PNG 업로드로 우회해 주세요."
+            extra.update({"code": "FIGMA_RATE_LIMIT", "retryAfterSeconds": retry_after_seconds})
+        raise UserFacingError(message, exc.code, extra)
     except urllib.error.URLError as exc:
         raise UserFacingError(f"Figma API 연결에 실패했습니다: {exc.reason}", 502)
 
@@ -1476,7 +1482,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.serve_file(
                 STATIC_DIR / "index.html",
                 "text/html; charset=utf-8",
-                cache_control="public, max-age=60",
+                cache_control="no-store",
             )
             return
         if path == "/logding" or path == "/logding/":
