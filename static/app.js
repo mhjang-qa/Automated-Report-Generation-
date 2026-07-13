@@ -11,6 +11,9 @@ const state = {
   embedFilename: "report.html",
   busy: false,
   embedBusy: false,
+  pixelBusy: false,
+  pixelImageDataUrl: "",
+  pixelParsed: null,
   loginBusy: false,
   isAnalyzing: false,
   geminiRetryUntil: 0,
@@ -30,8 +33,10 @@ const el = {
   notionUrl: document.querySelector("#notionUrl"),
   ticketTab: document.querySelector("#ticketTab"),
   embedTab: document.querySelector("#embedTab"),
+  pixelTab: document.querySelector("#pixelTab"),
   ticketView: document.querySelector("#ticketView"),
   embedView: document.querySelector("#embedView"),
+  pixelView: document.querySelector("#pixelView"),
   analyzeBtn: document.querySelector("#analyzeBtn"),
   registerBtn: document.querySelector("#registerBtn"),
   generateTcBtn: document.querySelector("#generateTcBtn"),
@@ -76,6 +81,26 @@ const el = {
   copyEmbedHtmlBtn: document.querySelector("#copyEmbedHtmlBtn"),
   downloadEmbedHtmlBtn: document.querySelector("#downloadEmbedHtmlBtn"),
   loadTargetVersionsBtn: document.querySelector("#loadTargetVersionsBtn"),
+  pixelFigmaUrl: document.querySelector("#pixelFigmaUrl"),
+  pixelPageUrl: document.querySelector("#pixelPageUrl"),
+  pixelViewportPreset: document.querySelector("#pixelViewportPreset"),
+  pixelFrameSelect: document.querySelector("#pixelFrameSelect"),
+  pixelWidth: document.querySelector("#pixelWidth"),
+  pixelHeight: document.querySelector("#pixelHeight"),
+  pixelMessage: document.querySelector("#pixelMessage"),
+  pixelLoadFramesBtn: document.querySelector("#pixelLoadFramesBtn"),
+  pixelRenderBtn: document.querySelector("#pixelRenderBtn"),
+  pixelOpenUrlBtn: document.querySelector("#pixelOpenUrlBtn"),
+  pixelOpacity: document.querySelector("#pixelOpacity"),
+  pixelOffsetX: document.querySelector("#pixelOffsetX"),
+  pixelOffsetY: document.querySelector("#pixelOffsetY"),
+  pixelScale: document.querySelector("#pixelScale"),
+  pixelReadout: document.querySelector("#pixelReadout"),
+  pixelMeta: document.querySelector("#pixelMeta"),
+  pixelStage: document.querySelector("#pixelStage"),
+  pixelPageFrame: document.querySelector("#pixelPageFrame"),
+  pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
+  pixelEmptyState: document.querySelector("#pixelEmptyState"),
 };
 
 const FLOOR_RISE_LOADING_DURATION_MS = 8200;
@@ -156,16 +181,29 @@ function showEmbedMessage(message, type = "") {
   el.embedMessage.className = `message ${type}`.trim();
 }
 
+function showPixelMessage(message, type = "") {
+  el.pixelMessage.textContent = message || "";
+  el.pixelMessage.className = `message ${type}`.trim();
+}
+
 function switchTab(tabName) {
+  const isTicket = tabName === "ticket";
   const isEmbed = tabName === "embed";
-  el.ticketTab.classList.toggle("active", !isEmbed);
+  const isPixel = tabName === "pixel";
+  el.ticketTab.classList.toggle("active", isTicket);
   el.embedTab.classList.toggle("active", isEmbed);
-  el.ticketView.classList.toggle("hidden", isEmbed);
+  el.pixelTab.classList.toggle("active", isPixel);
+  el.ticketView.classList.toggle("hidden", !isTicket);
   el.embedView.classList.toggle("hidden", !isEmbed);
+  el.pixelView.classList.toggle("hidden", !isPixel);
   if (isEmbed) {
     el.phaseBadge.textContent = "HTML 생성";
     el.phaseBadge.className = "phase";
     el.embedNotionUrl.focus();
+  } else if (isPixel) {
+    el.phaseBadge.textContent = "Pixel QA";
+    el.phaseBadge.className = "phase";
+    el.pixelFigmaUrl.focus();
   } else {
     el.phaseBadge.textContent = "대기 중";
     el.phaseBadge.className = "phase";
@@ -185,6 +223,8 @@ function syncButtons() {
   el.loadTargetVersionsBtn.disabled = state.embedBusy;
   el.copyEmbedHtmlBtn.disabled = !state.embedHtml;
   el.downloadEmbedHtmlBtn.disabled = !state.embedHtml;
+  el.pixelLoadFramesBtn.disabled = state.pixelBusy;
+  el.pixelRenderBtn.disabled = state.pixelBusy;
 }
 
 function setPreview(node, value, emptyText) {
@@ -566,6 +606,119 @@ function downloadEmbedHtml() {
   URL.revokeObjectURL(url);
 }
 
+function pixelViewport() {
+  return {
+    width: Number(el.pixelWidth.value) || 360,
+    height: Number(el.pixelHeight.value) || 800,
+  };
+}
+
+function updatePixelViewportFromPreset() {
+  const [width, height] = el.pixelViewportPreset.value.split("x").map((value) => Number(value));
+  el.pixelWidth.value = String(width || 360);
+  el.pixelHeight.value = String(height || 800);
+  applyPixelStage();
+}
+
+function applyPixelStage() {
+  const viewport = pixelViewport();
+  const opacity = Number(el.pixelOpacity.value) || 0;
+  const x = Number(el.pixelOffsetX.value) || 0;
+  const y = Number(el.pixelOffsetY.value) || 0;
+  const scale = Number(el.pixelScale.value) || 100;
+  el.pixelStage.style.width = `${viewport.width}px`;
+  el.pixelStage.style.height = `${viewport.height}px`;
+  el.pixelFigmaImage.style.opacity = String(opacity / 100);
+  el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
+  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height}`;
+}
+
+function pixelNodeId() {
+  return el.pixelFrameSelect.value || (state.pixelParsed && state.pixelParsed.nodeId) || "";
+}
+
+async function pixelLoadFrames() {
+  if (state.pixelBusy) return;
+  const figmaUrl = el.pixelFigmaUrl.value.trim();
+  if (!figmaUrl) {
+    showPixelMessage("Figma 링크를 입력해 주세요.", "error");
+    return;
+  }
+  state.pixelBusy = true;
+  syncButtons();
+  showPixelMessage("Figma 링크를 분석하는 중입니다.");
+  try {
+    const parsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
+    state.pixelParsed = parsed;
+    el.pixelFrameSelect.innerHTML = "";
+    if (parsed.nodeId) {
+      el.pixelFrameSelect.innerHTML = `<option value="${escapeAttr(parsed.nodeId)}">${escapeAttr(parsed.frameName || parsed.nodeId)} · ${escapeAttr(parsed.nodeId)}</option>`;
+      showPixelMessage(`node-id ${parsed.nodeId}를 확인했습니다.`, "success");
+      return;
+    }
+    const data = await apiPost("/api/pixel/figma-frames", { fileKey: parsed.fileKey });
+    const frames = data.frames || [];
+    el.pixelFrameSelect.innerHTML = frames.length
+      ? frames.map((frame) => `<option value="${escapeAttr(frame.id)}">${escapeAttr(frame.name)} (${frame.width} × ${frame.height})</option>`).join("")
+      : '<option value="">Frame 없음</option>';
+    showPixelMessage(`Frame ${frames.length}개를 불러왔습니다.`, frames.length ? "success" : "error");
+  } catch (error) {
+    console.error(error);
+    showPixelMessage(error.message, "error");
+  } finally {
+    state.pixelBusy = false;
+    syncButtons();
+  }
+}
+
+async function pixelRender() {
+  if (state.pixelBusy) return;
+  const figmaUrl = el.pixelFigmaUrl.value.trim();
+  const pageUrl = el.pixelPageUrl.value.trim();
+  if (!figmaUrl) {
+    showPixelMessage("Figma 링크를 입력해 주세요.", "error");
+    return;
+  }
+  if (!pageUrl) {
+    showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
+    return;
+  }
+  state.pixelBusy = true;
+  syncButtons();
+  showPixelMessage("Figma Frame 이미지를 생성하는 중입니다.");
+  try {
+    if (!state.pixelParsed) {
+      state.pixelParsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
+    }
+    const data = await apiPost("/api/pixel/figma-render", {
+      figmaUrl,
+      nodeId: pixelNodeId(),
+    });
+    state.pixelImageDataUrl = data.imageDataUrl;
+    el.pixelFigmaImage.src = state.pixelImageDataUrl;
+    el.pixelPageFrame.src = pageUrl;
+    el.pixelEmptyState.classList.add("hidden");
+    applyPixelStage();
+    el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
+    showPixelMessage("비교 화면을 준비했습니다. iframe 차단 사이트는 새 탭으로 열어 확인해 주세요.", "success");
+  } catch (error) {
+    console.error(error);
+    showPixelMessage(error.message, "error");
+  } finally {
+    state.pixelBusy = false;
+    syncButtons();
+  }
+}
+
+function pixelOpenUrl() {
+  const pageUrl = el.pixelPageUrl.value.trim();
+  if (!pageUrl) {
+    showPixelMessage("실제 웹 URL을 입력해 주세요.", "error");
+    return;
+  }
+  window.open(pageUrl, "_blank", "noopener,noreferrer");
+}
+
 el.analyzeBtn.addEventListener("click", analyze);
 el.registerBtn.addEventListener("click", registerSummary);
 el.generateTcBtn.addEventListener("click", generateTc);
@@ -574,17 +727,29 @@ el.copySummaryBtn.addEventListener("click", () => copyText(state.summary, "요�
 el.copyTcBtn.addEventListener("click", () => copyText(state.tcMarkdown, "TC 결과"));
 el.ticketTab.addEventListener("click", () => switchTab("ticket"));
 el.embedTab.addEventListener("click", () => switchTab("embed"));
+el.pixelTab.addEventListener("click", () => switchTab("pixel"));
 el.embedType.addEventListener("change", updateEmbedTypeFields);
 el.embedVersion.addEventListener("input", updateEmbedTypeFields);
 el.generateEmbedBtn.addEventListener("click", generateEmbedHtml);
 el.loadTargetVersionsBtn.addEventListener("click", loadEmbedTargetVersions);
 el.copyEmbedHtmlBtn.addEventListener("click", () => copyText(state.embedHtml, "HTML"));
 el.downloadEmbedHtmlBtn.addEventListener("click", downloadEmbedHtml);
+el.pixelViewportPreset.addEventListener("change", updatePixelViewportFromPreset);
+el.pixelWidth.addEventListener("input", applyPixelStage);
+el.pixelHeight.addEventListener("input", applyPixelStage);
+el.pixelOpacity.addEventListener("input", applyPixelStage);
+el.pixelOffsetX.addEventListener("input", applyPixelStage);
+el.pixelOffsetY.addEventListener("input", applyPixelStage);
+el.pixelScale.addEventListener("input", applyPixelStage);
+el.pixelLoadFramesBtn.addEventListener("click", pixelLoadFrames);
+el.pixelRenderBtn.addEventListener("click", pixelRender);
+el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
 el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyze();
 });
 
 updateEmbedTypeFields();
+applyPixelStage();
 syncButtons();
 bootApp();

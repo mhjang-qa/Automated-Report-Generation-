@@ -41,6 +41,7 @@
       <nav class="tabs" aria-label="상단 메뉴">
         <button id="ticketTab" class="tab active" type="button" data-tab="ticket">티켓 분석</button>
         <button id="embedTab" class="tab" type="button" data-tab="embed">임베드 HTML 생성</button>
+        <button id="pixelTab" class="tab" type="button" data-tab="pixel">Pixel Perfect QA</button>
       </nav>
 
       <div id="ticketView" class="tab-view">
@@ -196,6 +197,100 @@
               </div>
             </div>
             <iframe id="embedPreview" class="embed-preview" title="생성된 HTML 미리보기"></iframe>
+          </article>
+        </section>
+      </div>
+
+      <div id="pixelView" class="tab-view hidden">
+        <section class="pixel-layout">
+          <article class="panel pixel-form-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Figma · 실제 웹 화면 비교</h2>
+                <span class="meta">Figma Frame PNG를 실제 URL 위에 오버레이합니다.</span>
+              </div>
+            </div>
+
+            <label>
+              Figma 링크
+              <input id="pixelFigmaUrl" type="url" placeholder="https://www.figma.com/design/...?node-id=7006-6818" />
+            </label>
+
+            <label>
+              실제 웹 URL
+              <input id="pixelPageUrl" type="url" placeholder="https://example.com" />
+            </label>
+
+            <div class="form-grid">
+              <label>
+                Viewport
+                <select id="pixelViewportPreset">
+                  <option value="360x800">Mobile 360 × 800</option>
+                  <option value="390x844">Mobile 390 × 844</option>
+                  <option value="768x1024">Tablet 768 × 1024</option>
+                  <option value="1440x900">Desktop 1440 × 900</option>
+                  <option value="1920x1080">Desktop 1920 × 1080</option>
+                </select>
+              </label>
+              <label>
+                Frame
+                <select id="pixelFrameSelect">
+                  <option value="">URL node-id 사용</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                Width
+                <input id="pixelWidth" type="number" value="360" />
+              </label>
+              <label>
+                Height
+                <input id="pixelHeight" type="number" value="800" />
+              </label>
+            </div>
+
+            <div id="pixelMessage" class="message" role="status" aria-live="polite"></div>
+            <div class="actions embed-actions">
+              <button id="pixelLoadFramesBtn" class="ghost" type="button">Frame 조회</button>
+              <button id="pixelRenderBtn" class="primary" type="button">비교 시작</button>
+              <button id="pixelOpenUrlBtn" class="ghost" type="button">URL 새 탭</button>
+            </div>
+
+            <div class="pixel-controls">
+              <label>
+                Figma Opacity
+                <input id="pixelOpacity" type="range" min="0" max="100" value="55" />
+              </label>
+              <label>
+                X
+                <input id="pixelOffsetX" type="range" min="-200" max="200" value="0" />
+              </label>
+              <label>
+                Y
+                <input id="pixelOffsetY" type="range" min="-200" max="200" value="0" />
+              </label>
+              <label>
+                Scale
+                <input id="pixelScale" type="range" min="25" max="200" value="100" />
+              </label>
+            </div>
+            <div id="pixelReadout" class="metric-hint">X 0px · Y 0px · Scale 100% · Opacity 55%</div>
+          </article>
+
+          <article class="panel pixel-preview-panel">
+            <div class="panel-head">
+              <div>
+                <h2>비교 Canvas</h2>
+                <span id="pixelMeta" class="meta">Figma 이미지와 실제 페이지를 같은 viewport에 배치합니다.</span>
+              </div>
+            </div>
+            <div id="pixelStage" class="pixel-stage" style="width: 360px; height: 800px;">
+              <iframe id="pixelPageFrame" title="실제 웹 화면" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+              <img id="pixelFigmaImage" alt="Figma Frame overlay" />
+              <div id="pixelEmptyState" class="pixel-empty">Figma 링크와 실제 URL을 입력한 뒤 비교를 시작하세요.</div>
+            </div>
           </article>
         </section>
       </div>

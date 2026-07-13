@@ -1106,6 +1106,118 @@ def embed_target_versions(payload):
     return {"versions": versions}
 
 
+def parse_figma_url(figma_url):
+    raw = (figma_url or "").strip()
+    try:
+        parsed = urllib.parse.urlparse(raw)
+    except ValueError:
+        raise UserFacingError("Figma URL 형식이 올바르지 않습니다.", 400)
+    if parsed.scheme not in {"http", "https"} or parsed.netloc not in {"figma.com", "www.figma.com"}:
+        raise UserFacingError("Figma URL은 https://www.figma.com/design/... 형식이어야 합니다.", 400)
+    parts = [part for part in parsed.path.split("/") if part]
+    file_key = ""
+    frame_name = ""
+    for index, part in enumerate(parts):
+        if part in {"file", "design"} and index + 1 < len(parts):
+            file_key = parts[index + 1]
+            if index + 2 < len(parts):
+                frame_name = urllib.parse.unquote(parts[index + 2])
+            break
+    if not file_key:
+        raise UserFacingError("Figma file key를 찾지 못했습니다.", 400)
+    params = urllib.parse.parse_qs(parsed.query)
+    node_id = (params.get("node-id") or [""])[0].replace("-", ":")
+    return {"fileKey": file_key, "nodeId": node_id, "frameName": frame_name}
+
+
+def figma_api_request(path, query=None):
+    token = os.environ.get("FIGMA_ACCESS_TOKEN") or os.environ.get("FIGMA_TOKEN") or ""
+    if not token.strip():
+        raise UserFacingError("FIGMA_ACCESS_TOKEN 환경변수가 설정되어 있지 않습니다.", 500)
+    url = "https://api.figma.com/v1" + path
+    if query:
+        url += "?" + urllib.parse.urlencode(query)
+    request = urllib.request.Request(url, headers={"X-Figma-Token": token.strip()})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        message = "Figma API 호출에 실패했습니다."
+        if exc.code in {401, 403}:
+            message = "Figma 접근 권한이 없습니다. 토큰 권한과 파일 공유 상태를 확인해 주세요."
+        elif exc.code == 404:
+            message = "Figma 파일 또는 노드를 찾지 못했습니다."
+        elif exc.code == 429:
+            message = "Figma API 호출 제한에 도달했습니다. 잠시 후 다시 시도해 주세요."
+        raise UserFacingError(message, exc.code)
+    except urllib.error.URLError as exc:
+        raise UserFacingError(f"Figma API 연결에 실패했습니다: {exc.reason}", 502)
+
+
+def walk_figma_nodes(node):
+    yield node
+    for child in node.get("children") or []:
+        yield from walk_figma_nodes(child)
+
+
+def figma_parse(payload):
+    return parse_figma_url(payload.get("figmaUrl") or payload.get("figma_url") or "")
+
+
+def figma_frames(payload):
+    parsed = parse_figma_url(payload.get("figmaUrl") or payload.get("figma_url") or "") if payload.get("figmaUrl") or payload.get("figma_url") else {}
+    file_key = payload.get("fileKey") or payload.get("file_key") or parsed.get("fileKey")
+    if not file_key:
+        raise UserFacingError("Figma file key가 필요합니다.", 400)
+    data = figma_api_request(f"/files/{file_key}")
+    frames = []
+    for node in walk_figma_nodes(data.get("document") or {}):
+        if node.get("type") not in {"FRAME", "COMPONENT", "INSTANCE"}:
+            continue
+        box = node.get("absoluteBoundingBox") or {}
+        if not box:
+            continue
+        frames.append(
+            {
+                "id": node.get("id", ""),
+                "name": node.get("name", ""),
+                "width": round(float(box.get("width") or 0)),
+                "height": round(float(box.get("height") or 0)),
+            }
+        )
+    return {"frames": frames}
+
+
+def figma_render(payload):
+    parsed = parse_figma_url(payload.get("figmaUrl") or payload.get("figma_url") or "") if payload.get("figmaUrl") or payload.get("figma_url") else {}
+    file_key = payload.get("fileKey") or payload.get("file_key") or parsed.get("fileKey")
+    node_id = payload.get("nodeId") or payload.get("node_id") or parsed.get("nodeId")
+    if not file_key or not node_id:
+        raise UserFacingError("Figma file key와 node-id가 필요합니다.", 400)
+    data = figma_api_request(
+        f"/images/{file_key}",
+        {"ids": node_id, "format": "png", "scale": str(payload.get("scale") or "1")},
+    )
+    image_url = (data.get("images") or {}).get(node_id)
+    if not image_url:
+        raise UserFacingError("Figma 이미지 생성에 실패했습니다. node-id를 확인해 주세요.", 502)
+    try:
+        with urllib.request.urlopen(image_url, timeout=60) as response:
+            image_bytes = response.read()
+    except urllib.error.URLError as exc:
+        raise UserFacingError(f"Figma PNG 다운로드에 실패했습니다: {exc.reason}", 502)
+    if len(image_bytes) > env_int("FIGMA_IMAGE_MAX_BYTES", 8 * 1024 * 1024):
+        raise UserFacingError("Figma 이미지가 허용 크기를 초과했습니다.", 413)
+    data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+    return {
+        "fileKey": file_key,
+        "nodeId": node_id,
+        "frameName": parsed.get("frameName", ""),
+        "imageDataUrl": data_url,
+        "byteLength": len(image_bytes),
+    }
+
+
 def landing_redirect_enabled(handler, parsed):
     params = urllib.parse.parse_qs(parsed.query)
     if params.get("app") == ["1"]:
@@ -1230,6 +1342,12 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = generate_embed_html(payload)
             elif self.path == "/api/embed-target-versions":
                 result = embed_target_versions(payload)
+            elif self.path == "/api/pixel/figma-parse":
+                result = figma_parse(payload)
+            elif self.path == "/api/pixel/figma-frames":
+                result = figma_frames(payload)
+            elif self.path == "/api/pixel/figma-render":
+                result = figma_render(payload)
             else:
                 raise UserFacingError("지원하지 않는 요청입니다.", 404)
             json_response(self, 200, {"ok": True, **result})
