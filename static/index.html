@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notion Ticket Analyzer</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-2" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -216,6 +216,17 @@
               <input id="pixelFigmaUrl" type="url" placeholder="https://www.figma.com/design/...?node-id=7006-6818" />
             </label>
 
+            <div class="form-grid">
+              <label>
+                Figma PNG URL
+                <input id="pixelFigmaImageUrl" type="url" placeholder="Figma API 제한 시 PNG URL 또는 data:image/png 입력" />
+              </label>
+              <label>
+                Figma PNG 업로드
+                <input id="pixelFigmaImageFile" type="file" accept="image/png,image/jpeg,image/webp" />
+              </label>
+            </div>
+
             <label>
               실제 웹 URL
               <input id="pixelPageUrl" type="url" placeholder="https://example.com" />
@@ -368,6 +379,6 @@
         </section>
       </div>
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=pixelaudit-20260713-2"></script>
   </body>
 </html>

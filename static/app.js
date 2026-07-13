@@ -84,6 +84,8 @@ const el = {
   downloadEmbedHtmlBtn: document.querySelector("#downloadEmbedHtmlBtn"),
   loadTargetVersionsBtn: document.querySelector("#loadTargetVersionsBtn"),
   pixelFigmaUrl: document.querySelector("#pixelFigmaUrl"),
+  pixelFigmaImageUrl: document.querySelector("#pixelFigmaImageUrl"),
+  pixelFigmaImageFile: document.querySelector("#pixelFigmaImageFile"),
   pixelPageUrl: document.querySelector("#pixelPageUrl"),
   pixelStartUrl: document.querySelector("#pixelStartUrl"),
   pixelAutoFlow: document.querySelector("#pixelAutoFlow"),
@@ -699,6 +701,56 @@ function setPixelLocalRenderCache(renderCacheKey, data) {
   }
 }
 
+function readPixelImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Figma PNG 파일을 읽지 못했습니다."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function getPixelManualRenderData(renderCacheKey, nodeId) {
+  const file = el.pixelFigmaImageFile.files && el.pixelFigmaImageFile.files[0];
+  if (file) {
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Figma PNG 업로드에는 이미지 파일만 사용할 수 있습니다.");
+    }
+    const imageDataUrl = await readPixelImageFile(file);
+    const data = {
+      fileKey: "manual-upload",
+      nodeId,
+      frameName: file.name,
+      imageDataUrl,
+      byteLength: file.size,
+      cached: true,
+      localCached: true,
+      warning: "업로드한 Figma PNG를 사용했습니다.",
+    };
+    setPixelLocalRenderCache(renderCacheKey, data);
+    return data;
+  }
+  const imageUrl = el.pixelFigmaImageUrl.value.trim();
+  if (!imageUrl) return null;
+  if (!/^data:image\//i.test(imageUrl) && !/^https?:\/\//i.test(imageUrl)) {
+    throw new Error("Figma PNG URL은 http(s) 또는 data:image 형식이어야 합니다.");
+  }
+  const data = {
+    fileKey: "manual-url",
+    nodeId,
+    frameName: "Manual Figma PNG",
+    imageDataUrl: imageUrl,
+    byteLength: imageUrl.length,
+    cached: true,
+    localCached: true,
+    warning: "직접 입력한 Figma PNG를 사용했습니다.",
+  };
+  if (imageUrl.startsWith("data:image/")) {
+    setPixelLocalRenderCache(renderCacheKey, data);
+  }
+  return data;
+}
+
 function pixelSpecialStartUrl(pageUrl) {
   try {
     const url = new URL(pageUrl);
@@ -949,9 +1001,12 @@ async function pixelRender() {
     }
     const nodeId = pixelNodeId();
     const renderCacheKey = `${figmaUrl}::${nodeId}`;
-    let data = state.pixelRenderCacheKey === renderCacheKey && state.pixelRenderData
-      ? state.pixelRenderData
-      : getPixelLocalRenderCache(renderCacheKey);
+    let data = await getPixelManualRenderData(renderCacheKey, nodeId);
+    if (!data) {
+      data = state.pixelRenderCacheKey === renderCacheKey && state.pixelRenderData
+        ? state.pixelRenderData
+        : getPixelLocalRenderCache(renderCacheKey);
+    }
     if (!data) {
       try {
         data = await apiPost("/api/pixel/figma-render", {
@@ -967,6 +1022,9 @@ async function pixelRender() {
             warning: "Figma API 호출 제한으로 브라우저 캐시 이미지를 사용했습니다.",
           };
         } else {
+          if (error.status === 429) {
+            error.message = "Figma API 호출 제한입니다. 캐시가 없는 최초 요청이면 Figma PNG 업로드 또는 Figma PNG URL 입력으로 우회할 수 있습니다.";
+          }
           throw error;
         }
       }
@@ -1039,6 +1097,14 @@ el.generateEmbedBtn.addEventListener("click", generateEmbedHtml);
 el.loadTargetVersionsBtn.addEventListener("click", loadEmbedTargetVersions);
 el.copyEmbedHtmlBtn.addEventListener("click", () => copyText(state.embedHtml, "HTML"));
 el.downloadEmbedHtmlBtn.addEventListener("click", downloadEmbedHtml);
+el.pixelFigmaImageUrl.addEventListener("input", () => {
+  state.pixelRenderCacheKey = "";
+  state.pixelRenderData = null;
+});
+el.pixelFigmaImageFile.addEventListener("change", () => {
+  state.pixelRenderCacheKey = "";
+  state.pixelRenderData = null;
+});
 el.pixelViewportPreset.addEventListener("change", updatePixelViewportFromPreset);
 el.pixelWidth.addEventListener("input", applyPixelStage);
 el.pixelHeight.addEventListener("input", applyPixelStage);
