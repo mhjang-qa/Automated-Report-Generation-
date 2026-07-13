@@ -185,6 +185,21 @@
         return data;
       }
 
+      async function loadDeviceFrame(check, url) {
+        frame.removeAttribute("src");
+        frame.removeAttribute("srcdoc");
+        if (check.embeddable) {
+          frame.src = url;
+          return;
+        }
+        const response = await fetch(check.proxyUrl, { method: "GET", cache: "no-store" });
+        const html = await response.text();
+        if (!response.ok) {
+          throw new Error(html || "PixelAudit 프록시 화면을 불러오지 못했습니다.");
+        }
+        frame.srcdoc = html;
+      }
+
       async function launch() {
         const url = urlInput.value.trim();
         if (!url) {
@@ -194,7 +209,7 @@
         message.textContent = "URL 상태를 확인하는 중입니다.";
         try {
           const check = await apiPost("/api/pixel/page-check", { url });
-          frame.src = check.embeddable ? url : check.proxyUrl;
+          await loadDeviceFrame(check, url);
           message.textContent = check.embeddable
             ? "직접 iframe으로 표시합니다."
             : `iframe 차단 헤더(${check.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.`;

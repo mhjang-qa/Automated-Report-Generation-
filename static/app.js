@@ -646,6 +646,21 @@ function pixelNodeId() {
   return el.pixelFrameSelect.value || (state.pixelParsed && state.pixelParsed.nodeId) || "";
 }
 
+async function loadPixelFrame(frame, pageCheck, pageUrl) {
+  frame.removeAttribute("src");
+  frame.removeAttribute("srcdoc");
+  if (pageCheck.embeddable) {
+    frame.src = pageUrl;
+    return;
+  }
+  const response = await fetch(pageCheck.proxyUrl, { method: "GET", cache: "no-store" });
+  const html = await response.text();
+  if (!response.ok) {
+    throw new Error(html || "PixelAudit 프록시 화면을 불러오지 못했습니다.");
+  }
+  frame.srcdoc = html;
+}
+
 async function pixelLoadFrames() {
   if (state.pixelBusy) return;
   const figmaUrl = el.pixelFigmaUrl.value.trim();
@@ -707,9 +722,10 @@ async function pixelRender() {
     el.pixelFigmaImage.src = state.pixelImageDataUrl;
     el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
     const pageCheck = await apiPost("/api/pixel/page-check", { url: pageUrl });
-    const targetUrl = pageCheck.embeddable ? pageUrl : pageCheck.proxyUrl;
-    el.pixelPageFrame.src = targetUrl;
-    el.pixelActualFrame.src = targetUrl;
+    await Promise.all([
+      loadPixelFrame(el.pixelPageFrame, pageCheck, pageUrl),
+      loadPixelFrame(el.pixelActualFrame, pageCheck, pageUrl),
+    ]);
     el.pixelEmptyState.classList.add("hidden");
     el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
