@@ -201,7 +201,7 @@ function switchTab(tabName) {
     el.phaseBadge.className = "phase";
     el.embedNotionUrl.focus();
   } else if (isPixel) {
-    el.phaseBadge.textContent = "Pixel QA";
+    el.phaseBadge.textContent = "PixelAudit";
     el.phaseBadge.className = "phase";
     el.pixelFigmaUrl.focus();
   } else {
