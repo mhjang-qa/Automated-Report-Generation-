@@ -784,6 +784,27 @@ def clean_markdown_table(text):
     return "\n".join(table)
 
 
+def markdown_table_to_rows(text):
+    clean = clean_markdown_table(text)
+    rows = []
+    for line in clean.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if all(re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in cells):
+            continue
+        rows.append(cells)
+    if len(rows) < 2:
+        raise UserFacingError("TC 표로 변환할 데이터가 부족합니다. 다시 생성해 주세요.", 502)
+    width = len(rows[0])
+    normalized = []
+    for row in rows:
+        if len(row) < width:
+            row = row + [""] * (width - len(row))
+        elif len(row) > width:
+            row = row[: width - 1] + [" | ".join(row[width - 1 :])]
+        normalized.append(row)
+    return normalized
+
+
 def normalize_table_line(line):
     return re.sub(r"\s+", " ", line.strip())
 
@@ -857,6 +878,29 @@ def code_block(text, language="markdown"):
     return {"object": "block", "type": "code", "code": {"rich_text": rich, "language": language}}
 
 
+def table_block(rows):
+    width = len(rows[0])
+    return {
+        "object": "block",
+        "type": "table",
+        "table": {
+            "table_width": width,
+            "has_column_header": True,
+            "has_row_header": False,
+            "children": [table_row(row, width, is_header=(index == 0)) for index, row in enumerate(rows)],
+        },
+    }
+
+
+def table_row(cells, width, is_header=False):
+    normalized = (cells + [""] * width)[:width]
+    return {
+        "object": "block",
+        "type": "table_row",
+        "table_row": {"cells": [rt(cell, bold=is_header) for cell in normalized]},
+    }
+
+
 def chunk_text(text, size):
     text = text or ""
     return [text[i : i + size] for i in range(0, len(text), size)] or [""]
@@ -881,6 +925,9 @@ def markdown_summary_children(summary):
     for raw in summary.splitlines():
         line = raw.strip()
         if not line or line in {"<aside>", "</aside>"}:
+            continue
+        normalized = line.replace("*", "").strip()
+        if normalized == "작업 내용 요약":
             continue
         if line.startswith("**") and line.endswith("**"):
             children.append(heading(line.strip("*"), 3))
@@ -912,8 +959,8 @@ def upload_tc(page_id, tc_markdown):
     if not page_id:
         raise UserFacingError("TC를 업로드할 노션 페이지 정보가 없습니다. 먼저 노션 등록을 완료해 주세요.", 400)
     page_uuid = normalize_uuid(page_id)
-    clean = clean_markdown_table(tc_markdown)
-    children = [heading("테스트 케이스", 2), code_block(clean, "markdown")]
+    rows = markdown_table_to_rows(tc_markdown)
+    children = [heading("테스트 케이스 - 초안", 2), table_block(rows)]
     notion_request("PATCH", f"/blocks/{page_uuid}/children", {"children": children})
     try:
         notion_request("PATCH", f"/pages/{page_uuid}", {"properties": {"TC 생성 여부": {"checkbox": True}}})
