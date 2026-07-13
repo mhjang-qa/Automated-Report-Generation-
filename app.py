@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import base64
+import ipaddress
 import json
 import os
 import re
 import hashlib
+import socket
 import sys
 import threading
 import time
@@ -33,6 +35,7 @@ DEFAULT_TC_SOURCE_LIMIT = 6000
 DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
 DEFAULT_NOTION_IMAGE_LIMIT = 4
 DEFAULT_NOTION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
+DEFAULT_PIXEL_PROXY_MAX_BYTES = 2 * 1024 * 1024
 GEMINI_429_MESSAGE = "Gemini API 사용 제한(429)이 발생했습니다. 쿼터 소진, 분당 요청 제한, 토큰 사용량 초과 중 하나일 수 있습니다. 잠시 후 다시 시도하거나 입력 본문을 줄여 주세요."
 ACTIVE_ANALYZE_LOCK = threading.Lock()
 ACTIVE_ANALYZE_KEYS = set()
@@ -1218,6 +1221,97 @@ def figma_render(payload):
     }
 
 
+def validate_pixel_page_url(raw_url):
+    raw = (raw_url or "").strip()
+    try:
+        parsed = urllib.parse.urlparse(raw)
+    except ValueError:
+        raise UserFacingError("실제 웹 URL 형식이 올바르지 않습니다.", 400)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise UserFacingError("실제 웹 URL은 http 또는 https 전체 주소여야 합니다.", 400)
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = env_csv("PIXELAUDIT_ALLOWED_HOSTS")
+    if allowed_hosts and host not in {item.lower() for item in allowed_hosts}:
+        raise UserFacingError(f"{host} 도메인은 PixelAudit 허용 목록에 없습니다.", 403)
+    if host in {"localhost", "0.0.0.0"} or host.endswith(".localhost"):
+        raise UserFacingError("localhost URL은 PixelAudit 프록시에서 차단됩니다.", 403)
+    try:
+        address_infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise UserFacingError("실제 웹 URL의 호스트를 해석하지 못했습니다.", 400)
+    for info in address_infos:
+        address = info[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            raise UserFacingError("실제 웹 URL의 IP 주소를 확인하지 못했습니다.", 400)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            raise UserFacingError("내부망/로컬 IP로 해석되는 URL은 PixelAudit 프록시에서 차단됩니다.", 403)
+    return parsed
+
+
+def pixel_page_check(payload):
+    raw_url = payload.get("url") or payload.get("pageUrl") or payload.get("page_url") or ""
+    parsed = validate_pixel_page_url(raw_url)
+    request = urllib.request.Request(
+        urllib.parse.urlunparse(parsed),
+        method="HEAD",
+        headers={"User-Agent": "PixelAudit/1.0"},
+    )
+    headers = {}
+    status = 0
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            status = response.status
+            headers = {key.lower(): value for key, value in response.headers.items()}
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        headers = {key.lower(): value for key, value in exc.headers.items()}
+    except urllib.error.URLError:
+        request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers={"User-Agent": "PixelAudit/1.0"})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            status = response.status
+            headers = {key.lower(): value for key, value in response.headers.items()}
+    x_frame_options = headers.get("x-frame-options", "")
+    csp = headers.get("content-security-policy", "")
+    blocked = bool(x_frame_options) or "frame-ancestors" in csp.lower()
+    return {
+        "status": status,
+        "embeddable": not blocked,
+        "xFrameOptions": x_frame_options,
+        "contentSecurityPolicy": csp,
+        "proxyUrl": "/api/pixel/proxy?url=" + urllib.parse.quote(urllib.parse.urlunparse(parsed), safe=""),
+        "reason": "iframe 차단 헤더가 감지되었습니다." if blocked else "",
+    }
+
+
+def fetch_pixel_proxy(raw_url):
+    parsed = validate_pixel_page_url(raw_url)
+    request = urllib.request.Request(urllib.parse.urlunparse(parsed), headers={"User-Agent": "PixelAudit/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            content_type = response.headers.get("Content-Type", "text/html; charset=utf-8")
+            limit = env_int("PIXEL_PROXY_MAX_BYTES", DEFAULT_PIXEL_PROXY_MAX_BYTES)
+            body = response.read(limit + 1)
+            final_url = response.geturl()
+    except urllib.error.HTTPError as exc:
+        raise UserFacingError(f"실제 웹 URL 요청에 실패했습니다. HTTP {exc.code}", exc.code)
+    except urllib.error.URLError as exc:
+        raise UserFacingError(f"실제 웹 URL 연결에 실패했습니다: {exc.reason}", 502)
+    if len(body) > env_int("PIXEL_PROXY_MAX_BYTES", DEFAULT_PIXEL_PROXY_MAX_BYTES):
+        raise UserFacingError("프록시 응답 크기가 허용 범위를 초과했습니다.", 413)
+    if "text/html" in content_type.lower():
+        text = body.decode("utf-8", errors="replace")
+        base_tag = f'<base href="{urllib.parse.quote(final_url, safe=":/?#[]@!$&\'()*+,;=%")}">'
+        if re.search(r"<head[^>]*>", text, flags=re.IGNORECASE):
+            text = re.sub(r"(<head[^>]*>)", r"\1" + base_tag, text, count=1, flags=re.IGNORECASE)
+        else:
+            text = base_tag + text
+        body = text.encode("utf-8")
+        content_type = "text/html; charset=utf-8"
+    return body, content_type
+
+
 def landing_redirect_enabled(handler, parsed):
     params = urllib.parse.parse_qs(parsed.query)
     if params.get("app") == ["1"]:
@@ -1273,6 +1367,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     "reason": state["reason"],
                 },
             )
+            return
+        if path == "/api/pixel/proxy":
+            self.serve_pixel_proxy(parsed)
             return
         if path == "/favicon.ico":
             self.send_response(204)
@@ -1348,6 +1445,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = figma_frames(payload)
             elif self.path == "/api/pixel/figma-render":
                 result = figma_render(payload)
+            elif self.path == "/api/pixel/page-check":
+                result = pixel_page_check(payload)
             else:
                 raise UserFacingError("지원하지 않는 요청입니다.", 404)
             json_response(self, 200, {"ok": True, **result})
@@ -1356,6 +1455,26 @@ class AppHandler(BaseHTTPRequestHandler):
         except Exception:
             traceback.print_exc()
             json_response(self, 500, {"ok": False, "message": "처리 중 오류가 발생했습니다. 서버 로그를 확인해 주세요."})
+
+    def serve_pixel_proxy(self, parsed):
+        try:
+            params = urllib.parse.parse_qs(parsed.query)
+            raw_url = (params.get("url") or [""])[0]
+            body, content_type = fetch_pixel_proxy(raw_url)
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except UserFacingError as exc:
+            body = f"<html><body><p>{exc.message}</p></body></html>".encode("utf-8")
+            self.send_response(exc.status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
     def serve_file(self, path, content_type, cache_control="no-store"):
         body = path.read_bytes()

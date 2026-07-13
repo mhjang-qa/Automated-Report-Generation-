@@ -696,11 +696,16 @@ async function pixelRender() {
     });
     state.pixelImageDataUrl = data.imageDataUrl;
     el.pixelFigmaImage.src = state.pixelImageDataUrl;
-    el.pixelPageFrame.src = pageUrl;
+    const pageCheck = await apiPost("/api/pixel/page-check", { url: pageUrl });
+    el.pixelPageFrame.src = pageCheck.embeddable ? pageUrl : pageCheck.proxyUrl;
     el.pixelEmptyState.classList.add("hidden");
     applyPixelStage();
     el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
-    showPixelMessage("비교 화면을 준비했습니다. iframe 차단 사이트는 새 탭으로 열어 확인해 주세요.", "success");
+    if (pageCheck.embeddable) {
+      showPixelMessage("비교 화면을 준비했습니다.", "success");
+    } else {
+      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.`, "success");
+    }
   } catch (error) {
     console.error(error);
     showPixelMessage(error.message, "error");
