@@ -92,6 +92,9 @@ const el = {
   pixelRenderBtn: document.querySelector("#pixelRenderBtn"),
   pixelDeviceBtn: document.querySelector("#pixelDeviceBtn"),
   pixelOpenUrlBtn: document.querySelector("#pixelOpenUrlBtn"),
+  pixelExcludeChrome: document.querySelector("#pixelExcludeChrome"),
+  pixelExcludeTop: document.querySelector("#pixelExcludeTop"),
+  pixelExcludeBottom: document.querySelector("#pixelExcludeBottom"),
   pixelOpacity: document.querySelector("#pixelOpacity"),
   pixelOffsetX: document.querySelector("#pixelOffsetX"),
   pixelOffsetY: document.querySelector("#pixelOffsetY"),
@@ -633,13 +636,21 @@ function applyPixelStage() {
   const x = Number(el.pixelOffsetX.value) || 0;
   const y = Number(el.pixelOffsetY.value) || 0;
   const scale = Number(el.pixelScale.value) || 100;
+  const excludeEnabled = el.pixelExcludeChrome.checked;
+  const excludeTop = excludeEnabled ? Math.max(0, Number(el.pixelExcludeTop.value) || 0) : 0;
+  const excludeBottom = excludeEnabled ? Math.max(0, Number(el.pixelExcludeBottom.value) || 0) : 0;
+  const compareHeight = Math.max(0, viewport.height - excludeTop - excludeBottom);
   [el.pixelFigmaStage, el.pixelActualStage, el.pixelStage].forEach((stage) => {
     stage.style.width = `${viewport.width}px`;
     stage.style.height = `${viewport.height}px`;
+    stage.style.setProperty("--exclude-top", `${excludeTop}px`);
+    stage.style.setProperty("--exclude-bottom", `${excludeBottom}px`);
+    stage.classList.toggle("exclude-disabled", !excludeEnabled);
   });
   el.pixelFigmaImage.style.opacity = String(opacity / 100);
   el.pixelFigmaImage.style.transform = `translate(${x}px, ${y}px) scale(${scale / 100})`;
-  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height}`;
+  el.pixelFigmaImage.style.clipPath = excludeEnabled ? `inset(${excludeTop}px 0 ${excludeBottom}px 0)` : "none";
+  el.pixelReadout.textContent = `X ${x}px · Y ${y}px · Scale ${scale}% · Opacity ${opacity}% · Viewport ${viewport.width} × ${viewport.height} · Diff ${viewport.width} × ${compareHeight}`;
 }
 
 function pixelNodeId() {
@@ -789,6 +800,9 @@ el.pixelLoadFramesBtn.addEventListener("click", pixelLoadFrames);
 el.pixelRenderBtn.addEventListener("click", pixelRender);
 el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
+el.pixelExcludeChrome.addEventListener("change", applyPixelStage);
+el.pixelExcludeTop.addEventListener("input", applyPixelStage);
+el.pixelExcludeBottom.addEventListener("input", applyPixelStage);
 el.loginForm.addEventListener("submit", login);
 el.notionUrl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyze();

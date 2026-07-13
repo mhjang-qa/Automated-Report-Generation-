@@ -260,6 +260,20 @@
             </div>
 
             <div class="pixel-controls">
+              <label class="pixel-check">
+                <input id="pixelExcludeChrome" type="checkbox" checked />
+                단말 상/하단 영역 diff 제외
+              </label>
+              <div class="form-grid">
+                <label>
+                  상단 제외(px)
+                  <input id="pixelExcludeTop" type="number" value="52" />
+                </label>
+                <label>
+                  하단 제외(px)
+                  <input id="pixelExcludeBottom" type="number" value="34" />
+                </label>
+              </div>
               <label>
                 Figma Opacity
                 <input id="pixelOpacity" type="range" min="0" max="100" value="55" />
@@ -292,10 +306,13 @@
               <section class="pixel-canvas-card">
                 <div class="pixel-canvas-head">
                   <strong>Figma 기준</strong>
-                  <span>Design PNG</span>
+                  <span>Design PNG · 제외 영역 표시</span>
                 </div>
                 <div id="pixelFigmaStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
                   <img id="pixelFigmaOnlyImage" alt="Figma Frame" />
+                  <div class="pixel-exclude-mask top">Diff 제외</div>
+                  <div class="pixel-exclude-mask bottom">Diff 제외</div>
+                  <div class="pixel-compare-window"></div>
                 </div>
               </section>
 
@@ -306,6 +323,9 @@
                 </div>
                 <div id="pixelActualStage" class="pixel-stage pixel-stage-single" style="width: 360px; height: 800px;">
                   <iframe id="pixelActualFrame" title="실제 웹 화면 단독" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                  <div class="pixel-exclude-mask top">Diff 제외</div>
+                  <div class="pixel-exclude-mask bottom">Diff 제외</div>
+                  <div class="pixel-compare-window"></div>
                 </div>
               </section>
 
@@ -317,6 +337,9 @@
                 <div id="pixelStage" class="pixel-stage pixel-stage-overlay" style="width: 360px; height: 800px;">
                   <iframe id="pixelPageFrame" title="실제 웹 화면 overlay" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
                   <img id="pixelFigmaImage" alt="Figma Frame overlay" />
+                  <div class="pixel-exclude-mask top">Diff 제외</div>
+                  <div class="pixel-exclude-mask bottom">Diff 제외</div>
+                  <div class="pixel-compare-window"></div>
                 </div>
               </section>
             </div>
