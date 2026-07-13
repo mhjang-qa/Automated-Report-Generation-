@@ -1302,7 +1302,9 @@ def fetch_pixel_proxy(raw_url):
         raise UserFacingError("프록시 응답 크기가 허용 범위를 초과했습니다.", 413)
     if "text/html" in content_type.lower():
         text = body.decode("utf-8", errors="replace")
-        base_tag = f'<base href="{urllib.parse.quote(final_url, safe=":/?#[]@!$&\'()*+,;=%")}">'
+        safe_url_chars = ":/?#[]@!$&'()*+,;=%"
+        quoted_final_url = urllib.parse.quote(final_url, safe=safe_url_chars)
+        base_tag = f'<base href="{quoted_final_url}">'
         if re.search(r"<head[^>]*>", text, flags=re.IGNORECASE):
             text = re.sub(r"(<head[^>]*>)", r"\1" + base_tag, text, count=1, flags=re.IGNORECASE)
         else:
