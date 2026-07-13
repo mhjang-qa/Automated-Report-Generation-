@@ -83,6 +83,8 @@ const el = {
   loadTargetVersionsBtn: document.querySelector("#loadTargetVersionsBtn"),
   pixelFigmaUrl: document.querySelector("#pixelFigmaUrl"),
   pixelPageUrl: document.querySelector("#pixelPageUrl"),
+  pixelStartUrl: document.querySelector("#pixelStartUrl"),
+  pixelAutoFlow: document.querySelector("#pixelAutoFlow"),
   pixelViewportPreset: document.querySelector("#pixelViewportPreset"),
   pixelFrameSelect: document.querySelector("#pixelFrameSelect"),
   pixelWidth: document.querySelector("#pixelWidth"),
@@ -662,7 +664,107 @@ function pixelNodeId() {
   return el.pixelFrameSelect.value || (state.pixelParsed && state.pixelParsed.nodeId) || "";
 }
 
-async function loadPixelFrame(frame, pageCheck, pageUrl) {
+function pixelSpecialStartUrl(pageUrl) {
+  try {
+    const url = new URL(pageUrl);
+    if (url.hostname === "go.hanpass.com" && url.pathname.startsWith("/auth/visiting_signup")) {
+      return `${url.origin}/home`;
+    }
+  } catch (error) {
+    return pageUrl;
+  }
+  return pageUrl;
+}
+
+function pixelFlowSteps(pageUrl) {
+  const raw = el.pixelAutoFlow.value.trim();
+  if (raw) {
+    return raw.split(/[,>\n]/).map((step) => step.trim()).filter(Boolean);
+  }
+  try {
+    const url = new URL(pageUrl);
+    if (url.hostname === "go.hanpass.com" && url.pathname.startsWith("/auth/visiting_signup")) {
+      return ["로그인하기|로그인", "회원가입"];
+    }
+  } catch (error) {
+    return [];
+  }
+  return [];
+}
+
+function collectPixelFrameElements(root, result = []) {
+  if (!root || !root.querySelectorAll) return result;
+  root.querySelectorAll("*").forEach((node) => {
+    result.push(node);
+    if (node.shadowRoot) {
+      collectPixelFrameElements(node.shadowRoot, result);
+    }
+  });
+  return result;
+}
+
+function visiblePixelElement(node) {
+  const rect = node.getBoundingClientRect();
+  const style = node.ownerDocument.defaultView.getComputedStyle(node);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+}
+
+function findPixelClickableByText(doc, keyword) {
+  const normalizedKeyword = keyword.replace(/\s+/g, "");
+  const elements = collectPixelFrameElements(doc);
+  const candidates = elements.filter((node) => {
+    const text = (node.innerText || node.textContent || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
+    return text.includes(normalizedKeyword) && visiblePixelElement(node);
+  }).sort((left, right) => {
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    return (leftRect.width * leftRect.height) - (rightRect.width * rightRect.height);
+  });
+  for (const candidate of candidates) {
+    const clickable = candidate.closest("button,a,[role='button'],label") || candidate;
+    if (visiblePixelElement(clickable)) return clickable;
+  }
+  return null;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function clickPixelFrameText(frame, keyword) {
+  const deadline = Date.now() + 15000;
+  const keywords = keyword.split("|").map((item) => item.trim()).filter(Boolean);
+  while (Date.now() < deadline) {
+    let doc;
+    try {
+      doc = frame.contentDocument;
+    } catch (error) {
+      throw new Error("자동 클릭은 PixelAudit 프록시 화면에서만 사용할 수 있습니다.");
+    }
+    const clickable = doc && keywords.map((item) => findPixelClickableByText(doc, item)).find(Boolean);
+    if (clickable) {
+      clickable.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+      clickable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+      clickable.click();
+      clickable.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+      clickable.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+      await wait(900);
+      return true;
+    }
+    await wait(500);
+  }
+  throw new Error(`자동 클릭 대상을 찾지 못했습니다: ${keyword}`);
+}
+
+async function runPixelAutoFlow(frame, steps) {
+  if (!steps.length) return;
+  await wait(1200);
+  for (const step of steps) {
+    await clickPixelFrameText(frame, step);
+  }
+}
+
+async function loadPixelFrame(frame, pageCheck, pageUrl, flowSteps = []) {
   frame.removeAttribute("src");
   frame.removeAttribute("srcdoc");
   if (pageCheck.embeddable) {
@@ -675,6 +777,7 @@ async function loadPixelFrame(frame, pageCheck, pageUrl) {
     throw new Error(html || "PixelAudit 프록시 화면을 불러오지 못했습니다.");
   }
   frame.srcdoc = html;
+  await runPixelAutoFlow(frame, flowSteps);
 }
 
 async function pixelLoadFrames() {
@@ -737,19 +840,23 @@ async function pixelRender() {
     state.pixelImageDataUrl = data.imageDataUrl;
     el.pixelFigmaImage.src = state.pixelImageDataUrl;
     el.pixelFigmaOnlyImage.src = state.pixelImageDataUrl;
-    const pageCheck = await apiPost("/api/pixel/page-check", { url: pageUrl });
+    const startUrl = el.pixelStartUrl.value.trim() || pixelSpecialStartUrl(pageUrl);
+    const flowSteps = pixelFlowSteps(pageUrl);
+    const pageCheck = await apiPost("/api/pixel/page-check", { url: startUrl });
     await Promise.all([
-      loadPixelFrame(el.pixelPageFrame, pageCheck, pageUrl),
-      loadPixelFrame(el.pixelActualFrame, pageCheck, pageUrl),
+      loadPixelFrame(el.pixelPageFrame, pageCheck, startUrl, flowSteps),
+      loadPixelFrame(el.pixelActualFrame, pageCheck, startUrl, flowSteps),
     ]);
     el.pixelEmptyState.classList.add("hidden");
     el.pixelCompareGrid.classList.remove("hidden");
     applyPixelStage();
     el.pixelMeta.textContent = `${data.frameName || data.nodeId} · ${pixelViewport().width} × ${pixelViewport().height}`;
+    const flowText = flowSteps.length ? ` · 자동 클릭 ${flowSteps.join(" > ")}` : "";
+    const startText = startUrl !== pageUrl ? ` · 진입 ${startUrl}${flowText}` : flowText;
     if (pageCheck.embeddable) {
-      showPixelMessage("비교 화면을 준비했습니다.", "success");
+      showPixelMessage(`비교 화면을 준비했습니다.${startText}`, "success");
     } else {
-      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.`, "success");
+      showPixelMessage(`iframe 차단 헤더(${pageCheck.xFrameOptions || "CSP"})가 감지되어 PixelAudit 프록시로 표시합니다.${startText}`, "success");
     }
   } catch (error) {
     console.error(error);
