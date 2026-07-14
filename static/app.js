@@ -259,6 +259,9 @@ async function loadLocalizationApp(force = false) {
     const res = await fetch("/api/localization-config", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || !data.ok) {
+      el.localizationFrame.src = "about:blank";
+      el.localizationOpenBtn.removeAttribute("href");
+      el.localizationRepoBtn.href = data.repoUrl || state.localizationRepoUrl;
       throw new Error(data.message || "다국어 검증 앱 설정을 불러오지 못했습니다.");
     }
     state.localizationUrl = data.url;

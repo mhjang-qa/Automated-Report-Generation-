@@ -32,7 +32,7 @@ APP_LOGIN_PASSWORD=optional_password
 FIGMA_ACCESS_TOKEN=figma_personal_access_token
 FIGMA_IMAGE_MAX_BYTES=8388608
 PIXELAUDIT_ALLOWED_HOSTS=
-LOCALIZATION_VALIDATOR_URL=http://127.0.0.1:5173/
+LOCALIZATION_VALIDATOR_URL=https://your-localization-validator.example.com/
 PIXEL_PROXY_MAX_BYTES=2097152
 SUMMARY_CONTENT_LIMIT=12000
 TC_SOURCE_LIMIT=6000
@@ -59,7 +59,7 @@ ENABLE_PUBLIC_LANDING_REDIRECT=true
 - `FIGMA_ACCESS_TOKEN`: PixelAudit 탭에서 Figma Frame PNG를 생성할 때 사용합니다. 프론트엔드에는 노출하지 않습니다.
 - `FIGMA_IMAGE_MAX_BYTES`: Figma PNG 다운로드 최대 바이트, 기본값 `8388608`
 - `PIXELAUDIT_ALLOWED_HOSTS`: PixelAudit 실제 URL 프록시를 특정 도메인으로 제한할 때 콤마로 지정합니다. 비어 있으면 public URL만 허용하고 내부망/localhost는 차단합니다.
-- `LOCALIZATION_VALIDATOR_URL`: 상단 `다국어 검증` 탭에서 iframe으로 띄울 GoHanpass CDN 다국어 검증 앱 URL입니다. 기본값은 로컬 개발 서버 `http://127.0.0.1:5173/`입니다.
+- `LOCALIZATION_VALIDATOR_URL`: 상단 `다국어 검증` 탭에서 iframe으로 띄울 GoHanpass CDN 다국어 검증 앱 URL입니다. 로컬 접속에서는 미설정 시 `http://127.0.0.1:5173/`을 사용하지만, Render 배포 환경에서는 반드시 외부 접속 가능한 URL로 설정해야 합니다.
 - `PIXEL_PROXY_MAX_BYTES`: PixelAudit 프록시 응답 최대 바이트, 기본값 `2097152`
 - `SUMMARY_CONTENT_LIMIT`: 요약 생성 시 Gemini에 전달할 노션 본문 최대 문자 수, 기본값 `12000`
 - `TC_SOURCE_LIMIT`: TC 생성 시 원문 참고로 전달할 최대 문자 수, 기본값 `6000`
@@ -132,7 +132,9 @@ cd "/Users/jangminho/Desktop/One_click_0519/go_hanpass_localization_validator/fr
 npm run dev
 ```
 
-기본 연결 URL은 `http://127.0.0.1:5173/`입니다. 배포 환경에서는 `LOCALIZATION_VALIDATOR_URL`을 배포된 검증 앱 URL로 설정합니다.
+로컬 접속(`127.0.0.1`, `localhost`)에서는 기본 연결 URL로 `http://127.0.0.1:5173/`을 사용합니다.
+
+배포 환경에서는 `127.0.0.1`을 내려주지 않습니다. Render 환경변수 `LOCALIZATION_VALIDATOR_URL`을 외부 PC에서 접속 가능한 검증 앱 URL로 설정해야 `다국어 검증` 탭의 iframe이 정상 동작합니다.
 
 ## GitHub Pages 인트로
 

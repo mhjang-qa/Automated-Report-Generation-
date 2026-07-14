@@ -1424,6 +1424,11 @@ def landing_redirect_enabled(handler, parsed):
     return True
 
 
+def is_local_request(handler):
+    host = (handler.headers.get("Host") or "").split(":", 1)[0].strip().lower()
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 class AppHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1443,6 +1448,18 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", "0")
             self.end_headers()
+            return
+        if path == "/logding" or path == "/logding/":
+            self.send_file_headers(LOADING_DIR / "index.html", "text/html; charset=utf-8", "public, max-age=300")
+            return
+        if path.startswith("/logding/"):
+            loading_path = (LOADING_DIR / path.removeprefix("/logding/")).resolve()
+            if LOADING_DIR in loading_path.parents and loading_path.exists() and loading_path.is_file():
+                self.send_file_headers(loading_path, self.content_type_for(loading_path), "public, max-age=300")
+                return
+        static_path = (STATIC_DIR / path.lstrip("/")).resolve()
+        if STATIC_DIR in static_path.parents and static_path.exists() and static_path.is_file():
+            self.send_file_headers(static_path, self.content_type_for(static_path), "public, max-age=60")
             return
         self.send_response(404)
         self.send_header("Cache-Control", "no-store")
@@ -1469,14 +1486,28 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             return
         if path == "/api/localization-config":
-            validator_url = os.environ.get("LOCALIZATION_VALIDATOR_URL", LOCALIZATION_VALIDATOR_URL_DEFAULT).strip()
+            configured_url = os.environ.get("LOCALIZATION_VALIDATOR_URL", "").strip()
+            validator_url = configured_url or (LOCALIZATION_VALIDATOR_URL_DEFAULT if is_local_request(self) else "")
+            if not validator_url:
+                json_response(
+                    self,
+                    503,
+                    {
+                        "ok": False,
+                        "message": "배포 환경에서 다국어 검증 앱 URL이 설정되지 않았습니다. Render 환경변수 LOCALIZATION_VALIDATOR_URL에 외부 접속 가능한 검증 앱 URL을 설정해 주세요.",
+                        "repoUrl": LOCALIZATION_VALIDATOR_REPO_URL,
+                        "requiresConfiguration": True,
+                    },
+                )
+                return
             json_response(
                 self,
                 200,
                 {
                     "ok": True,
-                    "url": validator_url or LOCALIZATION_VALIDATOR_URL_DEFAULT,
+                    "url": validator_url,
                     "repoUrl": LOCALIZATION_VALIDATOR_REPO_URL,
+                    "localDefault": not configured_url,
                 },
             )
             return
@@ -1596,6 +1627,13 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_file_headers(self, path, content_type, cache_control="no-store"):
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", cache_control)
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.end_headers()
 
     def content_type_for(self, path):
         if path.suffix == ".css":
