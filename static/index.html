@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notion Ticket Analyzer</title>
-    <link rel="stylesheet" href="/styles.css?v=pixelaudit-20260713-6" />
+    <link rel="stylesheet" href="/styles.css?v=work-progress-20260714-1" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -398,6 +398,18 @@
         </section>
       </div>
     </main>
-    <script src="/app.js?v=pixelaudit-20260713-6"></script>
+    <div id="workOverlay" class="work-overlay hidden" role="status" aria-live="polite" aria-atomic="true">
+      <div class="work-card">
+        <div class="work-spinner" aria-hidden="true"></div>
+        <div class="work-copy">
+          <strong id="workTitle">작업 중</strong>
+          <span id="workDetail">잠시만 기다려주세요.</span>
+        </div>
+      </div>
+      <div class="work-progress" aria-hidden="true">
+        <span id="workProgressBar"></span>
+      </div>
+    </div>
+    <script src="/app.js?v=work-progress-20260714-1"></script>
   </body>
 </html>

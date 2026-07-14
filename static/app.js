@@ -130,12 +130,17 @@ const el = {
   localizationReloadBtn: document.querySelector("#localizationReloadBtn"),
   localizationOpenBtn: document.querySelector("#localizationOpenBtn"),
   localizationRepoBtn: document.querySelector("#localizationRepoBtn"),
+  workOverlay: document.querySelector("#workOverlay"),
+  workTitle: document.querySelector("#workTitle"),
+  workDetail: document.querySelector("#workDetail"),
+  workProgressBar: document.querySelector("#workProgressBar"),
 };
 
 const FLOOR_RISE_LOADING_DURATION_MS = 8200;
 const HEALTH_POLL_INTERVAL_MS = 2500;
 const SLOW_HEALTH_CHECK_ATTEMPTS = 8;
 let geminiCooldownTimer = null;
+let workProgressTimer = null;
 
 function showView(view) {
   if (el.loadingView) {
@@ -177,6 +182,51 @@ function setLoadingMessage(status, hint) {
   if (el.loadingHint) {
     el.loadingHint.textContent = hint;
   }
+}
+
+function showWorkProgress(title, detail = "잠시만 기다려주세요.") {
+  if (!el.workOverlay) return;
+  el.workTitle.textContent = title || "작업 중";
+  el.workDetail.textContent = detail || "잠시만 기다려주세요.";
+  el.workOverlay.classList.remove("hidden");
+  el.workOverlay.classList.add("active");
+  if (el.workProgressBar) {
+    el.workProgressBar.style.width = "12%";
+  }
+  window.clearInterval(workProgressTimer);
+  let progress = 12;
+  workProgressTimer = window.setInterval(() => {
+    progress = Math.min(92, progress + Math.max(1, Math.round((94 - progress) * 0.08)));
+    if (el.workProgressBar) {
+      el.workProgressBar.style.width = `${progress}%`;
+    }
+  }, 700);
+}
+
+function updateWorkProgress(detail, title = "") {
+  if (!el.workOverlay || el.workOverlay.classList.contains("hidden")) return;
+  if (title) {
+    el.workTitle.textContent = title;
+  }
+  if (detail) {
+    el.workDetail.textContent = detail;
+  }
+}
+
+function hideWorkProgress() {
+  window.clearInterval(workProgressTimer);
+  workProgressTimer = null;
+  if (el.workProgressBar) {
+    el.workProgressBar.style.width = "100%";
+  }
+  window.setTimeout(() => {
+    if (!el.workOverlay) return;
+    el.workOverlay.classList.add("hidden");
+    el.workOverlay.classList.remove("active");
+    if (el.workProgressBar) {
+      el.workProgressBar.style.width = "0";
+    }
+  }, 220);
 }
 
 function setBusy(isBusy, phase = "대기 중") {
@@ -500,6 +550,7 @@ async function analyze() {
   setBusy(true, "분석 중");
   el.analyzeBtn.disabled = true;
   showMessage("노션 페이지를 읽고 Gemini로 요약을 생성하는 중입니다.");
+  showWorkProgress("분석 요약 생성 중", "노션 페이지를 읽고 Gemini 응답을 기다리는 중입니다.");
   try {
     const data = await apiPost("/api/analyze", { url });
     Object.assign(state, {
@@ -525,6 +576,7 @@ async function analyze() {
   } finally {
     state.isAnalyzing = false;
     state.busy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -532,6 +584,7 @@ async function analyze() {
 async function registerSummary() {
   setBusy(true, "저장 중");
   showMessage("요약 결과를 대상 노션 DB에 저장하는 중입니다.");
+  showWorkProgress("노션 등록 중", "요약 결과를 대상 Notion DB에 저장하는 중입니다.");
   try {
     const data = await apiPost("/api/register-summary", {
       sourceUrl: state.sourceUrl,
@@ -547,6 +600,7 @@ async function registerSummary() {
     setError(error.message);
   } finally {
     state.busy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -554,6 +608,7 @@ async function registerSummary() {
 async function generateTc() {
   setBusy(true, "TC 생성 중");
   showMessage("요약 내용을 기반으로 테스트 케이스를 생성하는 중입니다.");
+  showWorkProgress("테스트 케이스 생성 중", "Gemini가 테스트 케이스를 생성하는 중입니다.");
   try {
     const data = await apiPost("/api/generate-tc", {
       title: state.title,
@@ -569,6 +624,7 @@ async function generateTc() {
     setError(error.message);
   } finally {
     state.busy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -576,6 +632,7 @@ async function generateTc() {
 async function uploadTc() {
   setBusy(true, "업로드 중");
   showMessage("생성된 TC를 노션 페이지 하단에 업로드하는 중입니다.");
+  showWorkProgress("TC 업로드 중", "생성된 테스트 케이스를 Notion 페이지에 업로드하는 중입니다.");
   try {
     const data = await apiPost("/api/upload-tc", {
       pageId: state.notionPageId,
@@ -589,6 +646,7 @@ async function uploadTc() {
     setError(error.message);
   } finally {
     state.busy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -660,8 +718,11 @@ async function generateEmbedHtml() {
   state.embedHtml = "";
   syncButtons();
   showEmbedMessage("HTML을 생성하는 중입니다.");
+  showWorkProgress("임베드 HTML 생성 중", "Notion 데이터 조회와 리포트 HTML 생성을 진행 중입니다.");
   try {
+    updateWorkProgress("Notion 링크와 입력값을 기준으로 데이터를 집계하는 중입니다.");
     const data = await apiPost("/api/embed-html", embedPayload());
+    updateWorkProgress("HTML 미리보기를 렌더링하는 중입니다.");
     state.embedHtml = data.html || "";
     state.embedFilename = data.filename || el.embedFilename.value.trim() || "report.html";
     el.embedPreview.srcdoc = state.embedHtml;
@@ -673,6 +734,7 @@ async function generateEmbedHtml() {
     showEmbedMessage(error.message, "error");
   } finally {
     state.embedBusy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -682,6 +744,7 @@ async function loadEmbedTargetVersions() {
   state.embedBusy = true;
   syncButtons();
   showEmbedMessage("목표버전 목록을 불러오는 중입니다.");
+  showWorkProgress("목표버전 로딩 중", "결함 DB에서 목표버전 목록을 읽는 중입니다.");
   try {
     const data = await apiPost("/api/embed-target-versions", {
       defectDbUrl: el.embedDefectDbUrl.value.trim(),
@@ -697,6 +760,7 @@ async function loadEmbedTargetVersions() {
     showEmbedMessage(error.message, "error");
   } finally {
     state.embedBusy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -969,6 +1033,7 @@ async function pixelLoadFrames() {
   state.pixelBusy = true;
   syncButtons();
   showPixelMessage("Figma 링크를 분석하는 중입니다.");
+  showWorkProgress("Figma 프레임 로딩 중", "Figma 링크를 분석하고 프레임 목록을 불러오는 중입니다.");
   try {
     const parsed = await apiPost("/api/pixel/figma-parse", { figmaUrl });
     state.pixelParsed = parsed;
@@ -989,6 +1054,7 @@ async function pixelLoadFrames() {
     showPixelMessage(error.message, "error");
   } finally {
     state.pixelBusy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }
@@ -1073,9 +1139,13 @@ async function pixelRender() {
   state.pixelBusy = true;
   syncButtons();
   showPixelMessage("화면 선택창에서 목표 화면이 열린 실제 탭/창을 선택해 주세요.");
+  showWorkProgress("PixelAudit 준비 중", "실제 화면 캡처와 Figma 이미지 로딩을 진행 중입니다.");
   try {
+    updateWorkProgress("화면 선택창에서 목표 화면이 열린 탭/창을 선택해 주세요.");
     const actualDataUrl = await captureExternalActualScreen();
+    updateWorkProgress("Figma 디자인 이미지를 불러오는 중입니다.");
     const data = await loadPixelDesignData(figmaUrl);
+    updateWorkProgress("캡처 화면과 디자인 오버레이를 준비하는 중입니다.");
     el.pixelActualScreenshot.src = actualDataUrl;
     el.pixelOverlayActualScreenshot.src = actualDataUrl;
     el.pixelActualScreenshot.classList.remove("hidden");
@@ -1095,6 +1165,7 @@ async function pixelRender() {
     showPixelMessage(error.message, "error");
   } finally {
     state.pixelBusy = false;
+    hideWorkProgress();
     syncButtons();
   }
 }

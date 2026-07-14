@@ -324,6 +324,78 @@ button:disabled {
   color: var(--good);
 }
 
+.work-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 50;
+  width: min(520px, calc(100% - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.work-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(23, 105, 170, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.work-spinner {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 3px solid rgba(23, 105, 170, 0.18);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: work-spin 0.8s linear infinite;
+}
+
+.work-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.work-copy strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.work-copy span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.work-progress {
+  height: 4px;
+  margin: 7px 10px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(23, 105, 170, 0.16);
+}
+
+.work-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #38bdf8);
+  transition: width 0.45s ease;
+}
+
+@keyframes work-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
