@@ -316,6 +316,10 @@ button:disabled {
   color: var(--bad);
 }
 
+.message.warning {
+  color: #b45309;
+}
+
 .message.success {
   color: var(--good);
 }

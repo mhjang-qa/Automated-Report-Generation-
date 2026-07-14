@@ -258,6 +258,13 @@ async function loadLocalizationApp(force = false) {
   try {
     const res = await fetch("/api/localization-config", { cache: "no-store" });
     const data = await res.json();
+    if (res.ok && data.requiresConfiguration) {
+      el.localizationFrame.src = "about:blank";
+      el.localizationOpenBtn.removeAttribute("href");
+      el.localizationRepoBtn.href = data.repoUrl || state.localizationRepoUrl;
+      showLocalizationMessage(data.message || "다국어 검증 앱 URL 설정이 필요합니다.", "warning");
+      return;
+    }
     if (!res.ok || !data.ok) {
       el.localizationFrame.src = "about:blank";
       el.localizationOpenBtn.removeAttribute("href");

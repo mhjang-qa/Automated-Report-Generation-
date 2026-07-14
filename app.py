@@ -1491,7 +1491,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if not validator_url:
                 json_response(
                     self,
-                    503,
+                    200,
                     {
                         "ok": False,
                         "message": "배포 환경에서 다국어 검증 앱 URL이 설정되지 않았습니다. Render 환경변수 LOCALIZATION_VALIDATOR_URL에 외부 접속 가능한 검증 앱 URL을 설정해 주세요.",
