@@ -27,6 +27,8 @@ LOADING_DIR = ROOT / "logding"
 TARGET_DB_URL_DEFAULT = "https://app.notion.com/p/39673fbd1951801baa4dea29b16a155a?v=39673fbd19518011b206000c9f5cdcfb&source=copy_link"
 TARGET_DATABASE_ID_DEFAULT = "39673fbd-1951-801b-aa4d-ea29b16a155a"
 PUBLIC_LANDING_URL_DEFAULT = "https://mhjang-qa.github.io/Automated-Report-Generation-/"
+LOCALIZATION_VALIDATOR_URL_DEFAULT = "http://127.0.0.1:5173/"
+LOCALIZATION_VALIDATOR_REPO_URL = "https://github.com/mhjang-qa/go_hanpass_localization_validator"
 NOTION_VERSION = "2022-06-28"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
 DEFAULT_GEMINI_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.1-flash-lite"
@@ -1463,6 +1465,18 @@ class AppHandler(BaseHTTPRequestHandler):
                     "available": state["available"],
                     "retryAfterSeconds": state["retryAfterSeconds"],
                     "reason": state["reason"],
+                },
+            )
+            return
+        if path == "/api/localization-config":
+            validator_url = os.environ.get("LOCALIZATION_VALIDATOR_URL", LOCALIZATION_VALIDATOR_URL_DEFAULT).strip()
+            json_response(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "url": validator_url or LOCALIZATION_VALIDATOR_URL_DEFAULT,
+                    "repoUrl": LOCALIZATION_VALIDATOR_REPO_URL,
                 },
             )
             return

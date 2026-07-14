@@ -42,6 +42,7 @@
         <button id="ticketTab" class="tab active" type="button" data-tab="ticket">티켓 분석</button>
         <button id="embedTab" class="tab" type="button" data-tab="embed">임베드 HTML 생성</button>
         <button id="pixelTab" class="tab" type="button" data-tab="pixel">PixelAudit</button>
+        <button id="localizationTab" class="tab" type="button" data-tab="localization">다국어 검증</button>
       </nav>
 
       <div id="ticketView" class="tab-view">
@@ -373,6 +374,26 @@
                 </div>
               </section>
             </div>
+          </article>
+        </section>
+      </div>
+
+      <div id="localizationView" class="tab-view hidden">
+        <section class="localization-layout">
+          <article class="panel localization-toolbar">
+            <div>
+              <h2>GoHanpass CDN 다국어 검증</h2>
+              <p class="meta">엑셀 기대 문구, CloudFront locale JSON, 실제 화면 문구를 교차 검증합니다.</p>
+            </div>
+            <div class="actions">
+              <button id="localizationReloadBtn" class="ghost" type="button">새로고침</button>
+              <a id="localizationOpenBtn" class="button-link primary" href="#" target="_blank" rel="noreferrer">새 탭 열기</a>
+              <a id="localizationRepoBtn" class="button-link ghost" href="https://github.com/mhjang-qa/go_hanpass_localization_validator" target="_blank" rel="noreferrer">GitHub</a>
+            </div>
+          </article>
+          <article class="panel localization-frame-panel">
+            <div id="localizationMessage" class="message" role="status" aria-live="polite">다국어 검증 앱을 불러오는 중입니다.</div>
+            <iframe id="localizationFrame" class="localization-frame" title="GoHanpass CDN 다국어 검증"></iframe>
           </article>
         </section>
       </div>

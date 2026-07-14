@@ -455,6 +455,53 @@ button:disabled {
   background: #fff;
 }
 
+.button-link {
+  display: inline-grid;
+  min-height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.button-link.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.button-link.ghost {
+  background: #fff;
+}
+
+.localization-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.localization-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.localization-frame-panel {
+  padding: 12px;
+}
+
+.localization-frame {
+  width: 100%;
+  min-height: 820px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .pixel-layout {
   display: grid;
   grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
@@ -683,6 +730,7 @@ button:disabled {
   .url-row,
   .grid,
   .embed-layout,
+  .localization-toolbar,
   .pixel-layout,
   .pixel-compare-grid,
   .form-grid,

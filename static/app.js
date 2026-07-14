@@ -18,6 +18,8 @@ const state = {
   pixelActualLoaded: false,
   pixelActualStartUrl: "",
   pixelParsed: null,
+  localizationUrl: "",
+  localizationRepoUrl: "https://github.com/mhjang-qa/go_hanpass_localization_validator",
   loginBusy: false,
   isAnalyzing: false,
   geminiRetryUntil: 0,
@@ -38,9 +40,11 @@ const el = {
   ticketTab: document.querySelector("#ticketTab"),
   embedTab: document.querySelector("#embedTab"),
   pixelTab: document.querySelector("#pixelTab"),
+  localizationTab: document.querySelector("#localizationTab"),
   ticketView: document.querySelector("#ticketView"),
   embedView: document.querySelector("#embedView"),
   pixelView: document.querySelector("#pixelView"),
+  localizationView: document.querySelector("#localizationView"),
   analyzeBtn: document.querySelector("#analyzeBtn"),
   registerBtn: document.querySelector("#registerBtn"),
   generateTcBtn: document.querySelector("#generateTcBtn"),
@@ -121,6 +125,11 @@ const el = {
   pixelActualFigmaImage: document.querySelector("#pixelActualFigmaImage"),
   pixelFigmaImage: document.querySelector("#pixelFigmaImage"),
   pixelEmptyState: document.querySelector("#pixelEmptyState"),
+  localizationFrame: document.querySelector("#localizationFrame"),
+  localizationMessage: document.querySelector("#localizationMessage"),
+  localizationReloadBtn: document.querySelector("#localizationReloadBtn"),
+  localizationOpenBtn: document.querySelector("#localizationOpenBtn"),
+  localizationRepoBtn: document.querySelector("#localizationRepoBtn"),
 };
 
 const FLOOR_RISE_LOADING_DURATION_MS = 8200;
@@ -206,16 +215,24 @@ function showPixelMessage(message, type = "") {
   el.pixelMessage.className = `message ${type}`.trim();
 }
 
+function showLocalizationMessage(message, type = "") {
+  el.localizationMessage.textContent = message || "";
+  el.localizationMessage.className = `message ${type}`.trim();
+}
+
 function switchTab(tabName) {
   const isTicket = tabName === "ticket";
   const isEmbed = tabName === "embed";
   const isPixel = tabName === "pixel";
+  const isLocalization = tabName === "localization";
   el.ticketTab.classList.toggle("active", isTicket);
   el.embedTab.classList.toggle("active", isEmbed);
   el.pixelTab.classList.toggle("active", isPixel);
+  el.localizationTab.classList.toggle("active", isLocalization);
   el.ticketView.classList.toggle("hidden", !isTicket);
   el.embedView.classList.toggle("hidden", !isEmbed);
   el.pixelView.classList.toggle("hidden", !isPixel);
+  el.localizationView.classList.toggle("hidden", !isLocalization);
   if (isEmbed) {
     el.phaseBadge.textContent = "HTML 생성";
     el.phaseBadge.className = "phase";
@@ -224,11 +241,41 @@ function switchTab(tabName) {
     el.phaseBadge.textContent = "PixelAudit";
     el.phaseBadge.className = "phase";
     el.pixelFigmaUrl.focus();
+  } else if (isLocalization) {
+    el.phaseBadge.textContent = "다국어 검증";
+    el.phaseBadge.className = "phase";
+    loadLocalizationApp();
   } else {
     el.phaseBadge.textContent = "대기 중";
     el.phaseBadge.className = "phase";
     el.notionUrl.focus();
   }
+}
+
+async function loadLocalizationApp(force = false) {
+  if (state.localizationUrl && !force) return;
+  showLocalizationMessage("다국어 검증 앱 설정을 확인하는 중입니다.");
+  try {
+    const res = await fetch("/api/localization-config", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.message || "다국어 검증 앱 설정을 불러오지 못했습니다.");
+    }
+    state.localizationUrl = data.url;
+    state.localizationRepoUrl = data.repoUrl || state.localizationRepoUrl;
+    el.localizationFrame.src = state.localizationUrl;
+    el.localizationOpenBtn.href = state.localizationUrl;
+    el.localizationRepoBtn.href = state.localizationRepoUrl;
+    showLocalizationMessage(`연결 URL: ${state.localizationUrl}`, "success");
+  } catch (error) {
+    showLocalizationMessage(error.message || "다국어 검증 앱을 불러오지 못했습니다.", "error");
+  }
+}
+
+function reloadLocalizationApp() {
+  state.localizationUrl = "";
+  el.localizationFrame.src = "about:blank";
+  loadLocalizationApp(true);
 }
 
 function syncButtons() {
@@ -1070,6 +1117,7 @@ el.copyTcBtn.addEventListener("click", () => copyText(state.tcMarkdown, "TC 결�
 el.ticketTab.addEventListener("click", () => switchTab("ticket"));
 el.embedTab.addEventListener("click", () => switchTab("embed"));
 el.pixelTab.addEventListener("click", () => switchTab("pixel"));
+el.localizationTab.addEventListener("click", () => switchTab("localization"));
 el.embedType.addEventListener("change", updateEmbedTypeFields);
 el.embedVersion.addEventListener("input", updateEmbedTypeFields);
 el.generateEmbedBtn.addEventListener("click", generateEmbedHtml);
@@ -1104,6 +1152,7 @@ el.pixelLaunchActualBtn.addEventListener("click", pixelLaunchActual);
 el.pixelRenderBtn.addEventListener("click", pixelRender);
 el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
+el.localizationReloadBtn.addEventListener("click", reloadLocalizationApp);
 el.pixelModeWeb.addEventListener("change", applyPixelStage);
 el.pixelModeApp.addEventListener("change", applyPixelStage);
 el.pixelExcludeChrome.addEventListener("change", applyPixelStage);
