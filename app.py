@@ -37,6 +37,9 @@ DEFAULT_TC_SOURCE_LIMIT = 6000
 DEFAULT_GEMINI_429_COOLDOWN_SECONDS = 60
 DEFAULT_NOTION_IMAGE_LIMIT = 4
 DEFAULT_NOTION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
+DEFAULT_NOTION_COMMENT_LIMIT = 30
+DEFAULT_NOTION_COMMENT_BLOCK_SCAN_LIMIT = 80
+DEFAULT_NOTION_COMMENTS_VERSION = "2026-03-11"
 DEFAULT_PIXEL_PROXY_MAX_BYTES = 2 * 1024 * 1024
 PIXELAUDIT_MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 DEFAULT_FIGMA_RENDER_CACHE_TTL_SECONDS = 60 * 60 * 6
@@ -424,11 +427,13 @@ def get_page_title(page):
     return "노션 티켓 요약"
 
 
-def collect_blocks(block_id, depth=0, images=None):
+def collect_blocks(block_id, depth=0, images=None, block_ids=None):
     if depth > 8:
         return []
     if images is None:
         images = []
+    if block_ids is None:
+        block_ids = []
     results = []
     cursor = None
     while True:
@@ -437,6 +442,8 @@ def collect_blocks(block_id, depth=0, images=None):
             qs += f"&start_cursor={urllib.parse.quote(cursor)}"
         data = notion_request("GET", f"/blocks/{block_id}/children{qs}")
         for block in data.get("results", []):
+            if block.get("id"):
+                block_ids.append(block["id"])
             image = block_to_image(block)
             if image:
                 images.append(image)
@@ -446,11 +453,120 @@ def collect_blocks(block_id, depth=0, images=None):
             if text:
                 results.append(text)
             if block.get("has_children"):
-                results.extend(collect_blocks(block["id"], depth + 1, images))
+                results.extend(collect_blocks(block["id"], depth + 1, images, block_ids))
         if not data.get("has_more"):
             break
         cursor = data.get("next_cursor")
     return results
+
+
+def comment_to_text(comment, index):
+    text = rich_text_plain(comment.get("rich_text")).strip()
+    if not text:
+        text = "텍스트 없이 첨부만 있는 댓글"
+    author = (comment.get("display_name") or {}).get("resolved_name") or "작성자 미상"
+    created = comment.get("created_time") or ""
+    edited = comment.get("last_edited_time") or ""
+    edited_note = " / 수정됨" if edited and edited != created else ""
+    return f"- 댓글 {index} [{created}{edited_note}] {author}: {text}"
+
+
+def comment_attachment_images(comment, comment_index):
+    text = rich_text_plain(comment.get("rich_text")).strip()
+    caption_base = text[:120] if text else f"댓글 {comment_index} 첨부"
+    images = []
+    for attachment_index, attachment in enumerate(comment.get("attachments") or [], start=1):
+        url = ""
+        if isinstance(attachment, dict):
+            if "file" in attachment:
+                url = (attachment.get("file") or {}).get("url", "")
+            elif "external" in attachment:
+                url = (attachment.get("external") or {}).get("url", "")
+        if not url:
+            continue
+        images.append(
+            {
+                "block_id": comment.get("id", ""),
+                "source_type": "comment_attachment",
+                "url": url,
+                "caption": f"댓글 {comment_index} 첨부 이미지 {attachment_index}: {caption_base}",
+            }
+        )
+    return images
+
+
+def list_comments_for_block(block_id, remaining, request_id="-"):
+    comments = []
+    cursor = None
+    while remaining > 0:
+        page_size = min(100, remaining)
+        qs = f"?block_id={urllib.parse.quote(block_id)}&page_size={page_size}"
+        if cursor:
+            qs += f"&start_cursor={urllib.parse.quote(cursor)}"
+        token = require_env("NOTION_TOKEN", "NOTION_TOKEN")
+        url = f"https://api.notion.com/v1/comments{qs}"
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("Notion-Version", os.environ.get("NOTION_COMMENTS_VERSION", DEFAULT_NOTION_COMMENTS_VERSION))
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode("utf-8")
+                data = json.loads(body) if body else {}
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            log_event(request_id, f"Notion comments failed block_id={block_id} status={exc.code} detail={detail[:500]}")
+            if exc.code in {401, 403}:
+                return comments, "노션 댓글 읽기 권한이 없습니다. Notion Integration의 comment read capability를 켜 주세요."
+            if exc.code == 404:
+                return comments, ""
+            return comments, "노션 댓글 조회에 실패했습니다. 본문 기준으로 분석을 계속합니다."
+        except urllib.error.URLError as exc:
+            log_event(request_id, f"Notion comments network failed block_id={block_id}: {exc}")
+            return comments, "노션 댓글 API에 연결할 수 없어 본문 기준으로 분석을 계속합니다."
+        batch = data.get("results") or []
+        comments.extend(batch)
+        remaining -= len(batch)
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+    return comments, ""
+
+
+def collect_comments(page_id, block_ids, request_id="-"):
+    comment_limit = env_int("NOTION_COMMENT_LIMIT", DEFAULT_NOTION_COMMENT_LIMIT, minimum=0)
+    if comment_limit <= 0:
+        return [], [], ""
+    block_scan_limit = env_int("NOTION_COMMENT_BLOCK_SCAN_LIMIT", DEFAULT_NOTION_COMMENT_BLOCK_SCAN_LIMIT, minimum=0)
+    targets = [page_id, *block_ids[:block_scan_limit]]
+    seen = set()
+    comments = []
+    warning = ""
+    for target in targets:
+        if len(comments) >= comment_limit:
+            break
+        batch, maybe_warning = list_comments_for_block(target, comment_limit - len(comments), request_id)
+        if maybe_warning and not warning:
+            warning = maybe_warning
+            break
+        for comment in batch:
+            comment_id = comment.get("id")
+            if comment_id and comment_id in seen:
+                continue
+            if comment_id:
+                seen.add(comment_id)
+            comments.append(comment)
+            if len(comments) >= comment_limit:
+                break
+    lines = [comment_to_text(comment, index) for index, comment in enumerate(comments, start=1)]
+    images = []
+    for index, comment in enumerate(comments, start=1):
+        images.extend(comment_attachment_images(comment, index))
+    log_event(
+        request_id,
+        f"Notion comments collected comments={len(comments)} attachment_images={len(images)} targets_scanned={len(targets)} warning={'yes' if warning else 'no'}",
+    )
+    return lines, images, warning
 
 
 def infer_image_mime(url, content_type=""):
@@ -526,7 +642,7 @@ def prepare_gemini_images(images, request_id):
     return prepared
 
 
-def fetch_ticket(url):
+def fetch_ticket(url, request_id="-"):
     page_id = extract_notion_id(url)
     page = notion_request("GET", f"/pages/{page_id}")
     title = get_page_title(page)
@@ -536,11 +652,26 @@ def fetch_ticket(url):
         if text:
             property_lines.append(f"{name}: {text}")
     images = []
-    block_lines = collect_blocks(page_id, images=images)
-    combined = "\n".join(property_lines + block_lines).strip()
+    block_ids = []
+    block_lines = collect_blocks(page_id, images=images, block_ids=block_ids)
+    comment_lines, comment_images, comment_warning = collect_comments(page_id, block_ids, request_id)
+    content_parts = [*property_lines, *block_lines]
+    if comment_lines:
+        content_parts.extend(["", "[댓글/논의]", *comment_lines])
+    elif comment_warning:
+        content_parts.extend(["", f"[댓글/논의 조회 안내] {comment_warning}"])
+    images.extend(comment_images)
+    combined = "\n".join(content_parts).strip()
     if not combined:
         raise UserFacingError("노션 본문이 비어 있어 분석할 수 없습니다.", 400)
-    return {"page_id": page_id, "title": title, "content": combined, "images": images}
+    return {
+        "page_id": page_id,
+        "title": title,
+        "content": combined,
+        "images": images,
+        "comment_count": len(comment_lines),
+        "comment_image_count": len(comment_images),
+    }
 
 
 def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", images=None):
@@ -744,6 +875,7 @@ def build_summary_prompt(title, content):
 </aside>
 
 각 섹션은 티켓 근거가 부족하면 "티켓 내 명시 없음"이라고 적고, 추정은 "추정:"으로 표시한다.
+본문 하단에 [댓글/논의] 섹션이 있으면 최신 논의와 변경 요청으로 간주해 문서 본문보다 우선해서 반영한다.
 
 [티켓 제목]
 {title}
@@ -1002,7 +1134,7 @@ def analyze_ticket(payload):
             raise UserFacingError("이미 동일한 노션 링크 분석이 진행 중입니다. 잠시 후 다시 확인해 주세요.", 409)
         ACTIVE_ANALYZE_KEYS.add(analyze_key)
     try:
-        ticket = fetch_ticket(source_url)
+        ticket = fetch_ticket(source_url, request_id=request_id)
         summary_limit = env_int("SUMMARY_CONTENT_LIMIT", DEFAULT_SUMMARY_CONTENT_LIMIT)
         sent_content_length = min(len(ticket["content"]), summary_limit)
         prompt = build_summary_prompt(ticket["title"], ticket["content"])
@@ -1013,7 +1145,8 @@ def analyze_ticket(payload):
                 f"/api/analyze notion sourcePageId={ticket['page_id']} title={ticket['title']} "
                 f"content_length={len(ticket['content'])} sent_content_length={sent_content_length} "
                 f"prompt_length={len(prompt)} image_blocks={len(ticket.get('images') or [])} "
-                f"sent_images={len(gemini_images)}"
+                f"sent_images={len(gemini_images)} comments={ticket.get('comment_count', 0)} "
+                f"comment_images={ticket.get('comment_image_count', 0)}"
             ),
         )
         summary = gemini_request(
