@@ -20,6 +20,7 @@ const state = {
   pixelParsed: null,
   localizationUrl: "",
   localizationRepoUrl: "https://github.com/mhjang-qa/go_hanpass_localization_validator",
+  localizationWarmupToken: 0,
   loginBusy: false,
   isAnalyzing: false,
   geminiRetryUntil: 0,
@@ -323,16 +324,44 @@ async function loadLocalizationApp(force = false) {
     }
     state.localizationUrl = data.url;
     state.localizationRepoUrl = data.repoUrl || state.localizationRepoUrl;
-    el.localizationFrame.src = state.localizationUrl;
     el.localizationOpenBtn.href = state.localizationUrl;
     el.localizationRepoBtn.href = state.localizationRepoUrl;
-    showLocalizationMessage(`연결 URL: ${state.localizationUrl}`, "success");
+    await warmUpLocalizationApp(state.localizationUrl);
   } catch (error) {
     showLocalizationMessage(error.message || "다국어 검증 앱을 불러오지 못했습니다.", "error");
   }
 }
 
+async function warmUpLocalizationApp(appUrl) {
+  const token = Date.now();
+  state.localizationWarmupToken = token;
+  el.localizationFrame.src = `/logding/?target=localization&ts=${Date.now()}`;
+  showLocalizationMessage("다국어 검증 서버를 깨우는 중입니다. 잠시만 기다려 주세요.", "warning");
+  const healthUrl = new URL("/api/health", appUrl).toString();
+  const startedAt = Date.now();
+  const timeoutMs = 90000;
+  while (Date.now() - startedAt < timeoutMs) {
+    if (state.localizationWarmupToken !== token) return;
+    try {
+      const res = await fetch(healthUrl, { cache: "no-store", mode: "cors" });
+      if (res.ok) {
+        if (state.localizationWarmupToken !== token) return;
+        el.localizationFrame.src = appUrl;
+        showLocalizationMessage(`연결 URL: ${appUrl}`, "success");
+        return;
+      }
+    } catch (_) {
+      // Render free instances can take a while to wake. Keep the local loading screen visible.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+  }
+  if (state.localizationWarmupToken !== token) return;
+  el.localizationFrame.src = appUrl;
+  showLocalizationMessage("서버 응답이 지연되어 새 탭 또는 iframe에서 계속 로딩합니다.", "warning");
+}
+
 function reloadLocalizationApp() {
+  state.localizationWarmupToken += 1;
   state.localizationUrl = "";
   el.localizationFrame.src = "about:blank";
   loadLocalizationApp(true);
