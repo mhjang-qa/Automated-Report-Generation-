@@ -674,16 +674,7 @@ def fetch_ticket(url, request_id="-"):
     }
 
 
-def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", images=None):
-    raise_if_gemini_limited(request_id, operation)
-    primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
-    api_keys = [("GEMINI_API_KEY", primary_key)]
-    secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
-    if secondary_key:
-        api_keys.append(("GEMINI_API_KEY_2", secondary_key))
-    primary_model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
-    fallback_models = env_csv("GEMINI_FALLBACK_MODELS", DEFAULT_GEMINI_FALLBACK_MODELS)
-    models = unique_ordered([primary_model, *fallback_models])
+def build_gemini_payload(prompt, max_tokens, images=None):
     parts = [{"text": prompt}]
     for index, image in enumerate(images or [], start=1):
         caption = image.get("caption") or "캡션 없음"
@@ -696,7 +687,7 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", 
                 }
             }
         )
-    payload = {
+    return {
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {
             "temperature": 0.2,
@@ -710,12 +701,26 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", 
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ],
     }
+
+
+def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", images=None):
+    raise_if_gemini_limited(request_id, operation)
+    primary_key = require_env("GEMINI_API_KEY", "GEMINI_API_KEY")
+    api_keys = [("GEMINI_API_KEY", primary_key)]
+    secondary_key = os.environ.get("GEMINI_API_KEY_2", "").strip()
+    if secondary_key:
+        api_keys.append(("GEMINI_API_KEY_2", secondary_key))
+    primary_model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+    fallback_models = env_csv("GEMINI_FALLBACK_MODELS", DEFAULT_GEMINI_FALLBACK_MODELS)
+    models = unique_ordered([primary_model, *fallback_models])
+    active_images = list(images or [])
+    payload = build_gemini_payload(prompt, max_tokens, active_images)
     payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     log_event(
         request_id,
         (
             f"Gemini {operation} payload prompt_length={len(prompt)} payload_bytes={len(payload_bytes)} "
-            f"image_count={len(images or [])} max_tokens={max_tokens} models={','.join(models)}"
+            f"image_count={len(active_images)} max_tokens={max_tokens} models={','.join(models)}"
         ),
     )
     last_user_error = None
@@ -800,7 +805,32 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", 
                         last_user_error = gemini_limit_error_payload(retry_seconds, reason)
                         raise last_user_error
                     if exc.code == 400:
-                        last_user_error = UserFacingError(f"Gemini 모델 설정을 확인해 주세요. 실패 모델: {model}", 502)
+                        log_event(request_id, f"Gemini {operation} 400 body={detail[:3000]}")
+                        parsed = parse_gemini_error_body(detail)
+                        if active_images:
+                            log_event(
+                                request_id,
+                                (
+                                    f"Gemini {operation} 400 retry without images "
+                                    f"model={model} key_label={key_name} image_count={len(active_images)}"
+                                ),
+                            )
+                            active_images = []
+                            payload = build_gemini_payload(prompt, max_tokens, active_images)
+                            payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                            log_event(
+                                request_id,
+                                (
+                                    f"Gemini {operation} text-only payload prompt_length={len(prompt)} "
+                                    f"payload_bytes={len(payload_bytes)} image_count=0"
+                                ),
+                            )
+                            continue
+                        detail_message = parsed.get("message") or f"실패 모델: {model}"
+                        last_user_error = UserFacingError(
+                            f"Gemini 요청 형식 또는 모델 설정을 확인해 주세요. {detail_message[:300]}",
+                            502,
+                        )
                         if not is_final_combo:
                             log_event(request_id, f"Gemini {operation} 400 failover to next model/key after model={model} key_label={key_name}")
                             break
