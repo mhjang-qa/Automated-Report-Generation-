@@ -637,7 +637,7 @@ const tl = createTimeline({
     // Re-add perspective so the meshes flying at the camera read with depth.
     fov: 35,
     duration: 1500, ease: 'out(2)',
-  }, 11000)
+  }, 8200)
   .add([...letters, ...jsLetters, cube], {
     id: 'outro burst',
     // Fly forward and up at the lens, staggered from the end.

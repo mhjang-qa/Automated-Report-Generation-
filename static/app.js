@@ -353,7 +353,7 @@ async function warmUpLocalizationApp(appUrl) {
     } catch (_) {
       // Render free instances can take a while to wake. Keep the local loading screen visible.
     }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await new Promise((resolve) => setTimeout(resolve, FLOOR_RISE_LOADING_DURATION_MS));
   }
   if (state.localizationWarmupToken !== token) return;
   el.localizationFrame.src = appUrl;
