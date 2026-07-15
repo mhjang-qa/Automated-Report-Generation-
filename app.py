@@ -948,12 +948,21 @@ def markdown_summary_children(summary):
     return children or [paragraph(summary)]
 
 
+def draft_summary_title(title):
+    base = (title or "노션 티켓 요약").strip() or "노션 티켓 요약"
+    suffix = "(초안 분석)"
+    if base.endswith(suffix):
+        return base
+    return f"{base} {suffix}"
+
+
 def create_summary_page(source_url, title, summary, tc_generated=False):
     db_id, title_name, _ = ensure_target_database()
+    page_title = draft_summary_title(title)
     payload = {
         "parent": {"database_id": db_id},
         "properties": {
-            title_name: {"title": rt(title or "노션 티켓 요약")},
+            title_name: {"title": rt(page_title)},
             "원본 노션 링크": {"url": source_url},
             "요약 상태": {"select": {"name": "요약 완료"}},
             "생성 일시": {"date": {"start": datetime.now(timezone.utc).isoformat()}},
