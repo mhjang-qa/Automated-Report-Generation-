@@ -1073,6 +1073,23 @@ def table_row(cells, width, is_header=False):
     }
 
 
+def column(children):
+    return {"object": "block", "type": "column", "column": {"children": children}}
+
+
+def column_list(left_children, right_children):
+    return {
+        "object": "block",
+        "type": "column_list",
+        "column_list": {
+            "children": [
+                column(left_children or [paragraph("")]),
+                column(right_children or [paragraph("")]),
+            ]
+        },
+    }
+
+
 def chunk_text(text, size):
     text = text or ""
     return [text[i : i + size] for i in range(0, len(text), size)] or [""]
@@ -1090,6 +1107,15 @@ def summary_blocks(summary):
             },
         }
     ]
+
+
+def summary_tc_layout_blocks(summary, tc_markdown=None):
+    right_children = [heading("테스트 케이스 - 초안", 2)]
+    if tc_markdown:
+        right_children.append(table_block(markdown_table_to_rows(tc_markdown)))
+    else:
+        right_children.append(paragraph("TC 생성 후 업로드하면 이 영역에 표로 저장됩니다."))
+    return [column_list(summary_blocks(summary), right_children)]
 
 
 def markdown_summary_children(summary):
@@ -1130,18 +1156,65 @@ def create_summary_page(source_url, title, summary, tc_generated=False):
             "생성 일시": {"date": {"start": datetime.now(timezone.utc).isoformat()}},
             "TC 생성 여부": {"checkbox": bool(tc_generated)},
         },
-        "children": summary_blocks(summary),
+        "children": summary_tc_layout_blocks(summary),
     }
     page = notion_request("POST", "/pages", payload)
     return {"page_id": page["id"], "url": page.get("url", "")}
 
 
-def upload_tc(page_id, tc_markdown):
+def block_rich_text(block):
+    kind = block.get("type")
+    if not kind or kind not in block:
+        return ""
+    return rich_text_plain(block[kind].get("rich_text"))
+
+
+def list_direct_children(block_id):
+    children = []
+    cursor = None
+    while True:
+        qs = "?page_size=100"
+        if cursor:
+            qs += f"&start_cursor={urllib.parse.quote(cursor)}"
+        data = notion_request("GET", f"/blocks/{block_id}/children{qs}")
+        children.extend(data.get("results") or [])
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+    return children
+
+
+def archive_block(block_id):
+    notion_request("PATCH", f"/blocks/{normalize_uuid(block_id)}", {"archived": True})
+
+
+def archive_generated_report_blocks(page_uuid):
+    for block in list_direct_children(page_uuid):
+        kind = block.get("type")
+        text = block_rich_text(block)
+        should_archive = False
+        if kind == "column_list":
+            should_archive = True
+        elif kind == "callout" and text == "작업 내용 요약":
+            should_archive = True
+        elif kind in {"heading_1", "heading_2", "heading_3"} and text.startswith("테스트 케이스"):
+            should_archive = True
+        elif kind == "table":
+            should_archive = True
+        if should_archive and block.get("id"):
+            archive_block(block["id"])
+
+
+def upload_tc(page_id, tc_markdown, summary=""):
     if not page_id:
         raise UserFacingError("TC를 업로드할 노션 페이지 정보가 없습니다. 먼저 노션 등록을 완료해 주세요.", 400)
     page_uuid = normalize_uuid(page_id)
     rows = markdown_table_to_rows(tc_markdown)
-    children = [heading("테스트 케이스 - 초안", 2), table_block(rows)]
+    archive_generated_report_blocks(page_uuid)
+    if summary:
+        children = summary_tc_layout_blocks(summary, tc_markdown)
+    else:
+        children = [heading("테스트 케이스 - 초안", 2), table_block(rows)]
     notion_request("PATCH", f"/blocks/{page_uuid}/children", {"children": children})
     try:
         notion_request("PATCH", f"/pages/{page_uuid}", {"properties": {"TC 생성 여부": {"checkbox": True}}})
@@ -1749,7 +1822,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = create_tc(payload)
             elif self.path == "/api/upload-tc":
                 page_id = payload.get("pageId") or payload.get("notionPageId")
-                result = upload_tc(page_id, payload.get("tcMarkdown") or "")
+                result = upload_tc(page_id, payload.get("tcMarkdown") or "", payload.get("summary") or "")
             elif self.path == "/api/embed-html":
                 result = generate_embed_html(payload)
             elif self.path == "/api/embed-target-versions":

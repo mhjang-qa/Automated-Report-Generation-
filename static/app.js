@@ -666,6 +666,7 @@ async function uploadTc() {
     const data = await apiPost("/api/upload-tc", {
       pageId: state.notionPageId,
       tcMarkdown: state.tcMarkdown,
+      summary: state.summary,
     });
     state.notionPageUrl = data.url || state.notionPageUrl;
     renderNotionLink();
