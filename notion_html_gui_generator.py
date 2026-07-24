@@ -40,8 +40,9 @@ DEFECT_COLUMN_CANDIDATES = {
     "severity": ("심각도", "Severity"),
     "defect_type": ("결함 유형", "Type", "유형", "Category", "분류"),
     "priority": ("우선순위", "Priority", "중요도"),
-    "feature": ("피처", "Feature", "기능", "ATM", "메뉴", "Project", "프로젝트", "Name", "이름", "제목", "Title"),
+    "feature": ("피처", "Feature", "기능", "ATM", "ATM 항목", "ATM항목", "ATM 구분", "ATM구분", "메뉴", "Project", "프로젝트", "Name", "이름", "제목", "Title"),
 }
+ATM_COLUMN_CANDIDATES = ("ATM", "ATM 항목", "ATM항목", "ATM 구분", "ATM구분")
 END_STATUS_COLUMN_CANDIDATES = (
     "처리 결과", "종료 결과", "최종 상태", "End Status", "Resolution",
     "상태", "Status", "진행상태", "Progress", "결론", "Result"
@@ -406,7 +407,16 @@ def _relation_page_title(page_id):
     return title
 
 
-def _property_value(prop):
+def _is_feature_property_name(name):
+    compact = re.sub(r"\s+", "", str(name or "").strip().lower())
+    if not compact:
+        return False
+    candidates = [*DEFECT_COLUMN_CANDIDATES["feature"], *ATM_COLUMN_CANDIDATES]
+    candidate_compacts = {re.sub(r"\s+", "", candidate.lower()) for candidate in candidates}
+    return compact in candidate_compacts or "atm" in compact
+
+
+def _property_value(prop, property_name=""):
     ptype = prop.get("type")
     value = prop.get(ptype)
     if ptype == "title":
@@ -426,12 +436,19 @@ def _property_value(prop):
     if ptype == "date":
         return (value or {}).get("start", "")
     if ptype == "relation":
-        # Relation page-title lookup is very expensive on large Notion DBs.
-        # Current EM/FEA flows do not need relation values, so keep refresh fast.
-        return ""
+        if not _is_feature_property_name(property_name):
+            return ""
+        titles = [_relation_page_title(item.get("id")) for item in value or []]
+        return ", ".join(title for title in titles if title)
     if ptype == "formula":
-        return _property_value({"type": value.get("type"), value.get("type"): value.get(value.get("type"))}) if value else ""
+        return _property_value({"type": value.get("type"), value.get("type"): value.get(value.get("type"))}, property_name) if value else ""
     if ptype == "rollup":
+        if value and value.get("type") == "array":
+            values = [
+                _property_value({"type": item.get("type"), item.get("type"): item.get(item.get("type"))}, property_name)
+                for item in value.get("array") or []
+            ]
+            return ", ".join(item for item in values if item)
         return json.dumps(value, ensure_ascii=False) if value else ""
     return str(value or "")
 
@@ -447,7 +464,7 @@ def _page_title(page):
 
 
 def _page_properties_to_row(page):
-    return {name: _property_value(prop) for name, prop in (page.get("properties") or {}).items()}
+    return {name: _property_value(prop, name) for name, prop in (page.get("properties") or {}).items()}
 
 
 def _data_source_ids_from_database(database_id):
@@ -651,6 +668,17 @@ def _find_column(row, candidates):
 
 def _defect_columns(row):
     return {key: _find_column(row, candidates) for key, candidates in DEFECT_COLUMN_CANDIDATES.items()}
+
+
+def _find_atm_column(row):
+    column = _find_column(row, ATM_COLUMN_CANDIDATES)
+    if column:
+        return column
+    for key in row.keys():
+        compact = re.sub(r"\s+", "", str(key or "").strip().lower())
+        if "atm" in compact:
+            return key
+    return None
 
 
 def _query_rows_from_notion_database_or_page(notion_id):
@@ -927,7 +955,7 @@ def _feature_value_from_row(row, columns):
 
 
 def _atm_value_from_row(row):
-    atm_column = _find_column(row, ("ATM",))
+    atm_column = _find_atm_column(row)
     if not atm_column:
         return "비어있음"
     value = str(row.get(atm_column, "") or "").strip()
