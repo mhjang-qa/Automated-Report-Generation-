@@ -702,19 +702,25 @@ def fetch_defects_from_notion(defect_db_url: str) -> list:
     return defects
 
 
-def normalize_end_status(value: str) -> str:
+def normalize_end_status(value: str, allow_invalid: bool = True) -> str:
     text = str(value or "").strip()
     compact = re.sub(r"[\s/_()\\[\\]-]+", "", text).upper()
     if not compact:
         return "future"
-    if any(word in text for word in ("결함아님", "결함 아님", "정상 동작", "재현불가", "중복", "기획")):
-        return "invalid"
-    if any(word in text for word in ("추후", "보류", "다음", "차기", "미반영", "미수정")):
+
+    # "QA 검증 - 회귀"는 운영 반영 후 회귀 테스트 예정 상태다.
+    # 유형/제목에 들어간 "기획" 같은 단어보다 상태값을 우선한다.
+    if "QA 검증" in text or "QA검증" in text or "회귀" in text:
         return "future"
-    if compact in {"INVALID", "NOTABUG", "WONTFIX", "DUPLICATE", "ASIS"}:
-        return "invalid"
+    if any(word in text for word in ("추후", "보류", "다음", "차기", "미반영", "미수정", "예정", "대기")):
+        return "future"
     if compact in {"DEFERRED", "PENDING", "LATER", "TODO", "OPEN", "INPROGRESS", "BACKLOG"}:
         return "future"
+
+    if allow_invalid and any(word in text for word in ("결함아님", "결함 아님", "정상 동작", "재현불가", "중복", "기획")):
+        return "invalid"
+    if allow_invalid and compact in {"INVALID", "NOTABUG", "WONTFIX", "DUPLICATE", "ASIS"}:
+        return "invalid"
     if compact in {"DONE", "RESOLVED", "CLOSED", "FIXED", "COMPLETE", "COMPLETED", "PASS"}:
         return "fixed"
     if any(word in text for word in ("완료", "해결", "종료", "수정완료", "반영완료", "정상 반영", "정상반영")):
@@ -731,7 +737,9 @@ def aggregate_end_defects(defects: list) -> dict:
         type_column = columns.get("defect_type")
         status_text = str(row.get(status_column, "") if status_column else "")
         type_text = str(row.get(type_column, "") if type_column else "")
-        bucket = normalize_end_status(f"{status_text} {type_text}")
+        bucket = normalize_end_status(status_text)
+        if bucket == "future" and not status_text.strip():
+            bucket = normalize_end_status(type_text, allow_invalid=False)
         counts["total"] += 1
         counts[bucket] += 1
     return counts
