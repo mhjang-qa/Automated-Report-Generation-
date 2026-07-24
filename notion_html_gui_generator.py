@@ -708,10 +708,17 @@ def normalize_end_status(value: str, allow_invalid: bool = True) -> str:
     if not compact:
         return "future"
 
-    # "QA 검증 - 회귀"는 운영 반영 후 회귀 테스트 예정 상태다.
-    # 유형/제목에 들어간 "기획" 같은 단어보다 상태값을 우선한다.
-    if "QA 검증" in text or "QA검증" in text or "회귀" in text:
-        return "future"
+    # "QA 검증 -회귀 (QA Verification)"는 운영 반영 후 검증 단계로,
+    # END 리포트에서는 수정 정상 반영으로 집계한다.
+    is_qa_regression = (
+        "QA 검증" in text
+        or "QA검증" in text
+        or "QA Verification" in text
+        or "QAVERIFICATION" in compact
+        or ("QA" in compact and "회귀" in text)
+    )
+    if is_qa_regression:
+        return "fixed"
     if any(word in text for word in ("추후", "보류", "다음", "차기", "미반영", "미수정", "예정", "대기")):
         return "future"
     if compact in {"DEFERRED", "PENDING", "LATER", "TODO", "OPEN", "INPROGRESS", "BACKLOG"}:
