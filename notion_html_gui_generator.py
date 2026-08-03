@@ -37,6 +37,11 @@ TC_RELATION_COLUMN_CANDIDATES = (
 OS_RESULT_COLUMN_ALIASES = {
     "AOS": ("AOS", "Android", "ANDROID", "안드로이드"),
     "iOS": ("iOS", "IOS", "아이폰", "아이오에스"),
+    "BO": ("BO", "Back Office", "BackOffice", "관리자"),
+    "FO": ("FO", "Front Office", "FrontOffice"),
+    "Web": ("Web", "WEB"),
+    "Admin": ("Admin", "ADMIN"),
+    "Server": ("Server", "SERVER"),
 }
 DEFECT_COLUMN_CANDIDATES = {
     "version": ("목표버전", "Target Version", "Version", "버전", "Fix Version"),
@@ -173,6 +178,8 @@ def detect_os_result_columns(row: dict) -> dict:
         result_tokens = ("result", "status", "결과", "상태")
         for key in keys:
             key_compact = compact(key)
+            if "expected" in key_compact or "기대" in key_compact or "예상" in key_compact:
+                continue
             if any(token in key_compact for token in result_tokens):
                 result_column = key
                 break
@@ -589,6 +596,19 @@ def _tc_count_from_row(row):
     return int(match.group(0)) if match else 0
 
 
+def _looks_like_tc_leaf_row(row):
+    if not row:
+        return False
+    keys = {
+        re.sub(r"[\s/_()\[\]-]+", "", str(key or "").strip().lower())
+        for key in row.keys()
+    }
+    return bool(
+        {"tcid", "tc", "testitem", "teststeps", "requirement", "expectedresult"}
+        & keys
+    )
+
+
 def _fetch_related_tc_rows(page, depth=2, visited=None):
     if depth <= 0:
         return []
@@ -804,8 +824,19 @@ def _checklist_rows_from_blocks(page_id):
     return rows
 
 
-def fetch_test_cases_from_page(page_id: str, include_page_properties: bool = True) -> list:
+def fetch_test_cases_from_page(
+    page_id: str,
+    include_page_properties: bool = True,
+    max_depth: int = 8,
+    visited_pages=None,
+    include_block_rows: bool = True,
+) -> list:
     """하위 페이지 내 테스트 케이스 데이터를 조회한다."""
+    visited_pages = visited_pages or set()
+    if not page_id or page_id in visited_pages or max_depth < 0:
+        return []
+    visited_pages.add(page_id)
+
     rows = []
     if include_page_properties:
         try:
@@ -820,24 +851,53 @@ def fetch_test_cases_from_page(page_id: str, include_page_properties: bool = Tru
         try:
             if block.get("type") == "child_database":
                 for page in _query_database(block["id"]):
-                    rows.append(_page_properties_to_row(page))
+                    row = _page_properties_to_row(page)
+                    if detect_os_result_columns(row).get("mode") != "unknown":
+                        rows.append(row)
+                    elif _looks_like_tc_leaf_row(row):
+                        continue
+                    else:
+                        rows.extend(
+                            fetch_test_cases_from_page(
+                                page["id"],
+                                include_page_properties=False,
+                                max_depth=max_depth - 1,
+                                visited_pages=visited_pages,
+                                include_block_rows=False,
+                            )
+                        )
             elif block.get("type") == "link_to_page":
                 link = block.get("link_to_page", {})
                 if link.get("type") == "database_id" and link.get("database_id"):
                     for page in _query_database(link["database_id"]):
-                        rows.append(_page_properties_to_row(page))
+                        row = _page_properties_to_row(page)
+                        if detect_os_result_columns(row).get("mode") != "unknown":
+                            rows.append(row)
+                        elif _looks_like_tc_leaf_row(row):
+                            continue
+                        else:
+                            rows.extend(
+                                fetch_test_cases_from_page(
+                                    page["id"],
+                                    include_page_properties=False,
+                                    max_depth=max_depth - 1,
+                                    visited_pages=visited_pages,
+                                    include_block_rows=False,
+                                )
+                            )
         except ValueError as e:
             print("Child database read skipped:", block.get("id"), e)
 
-    try:
-        rows.extend(_table_rows_from_blocks(page_id))
-    except ValueError as e:
-        print("Table block read skipped:", e)
+    if include_block_rows:
+        try:
+            rows.extend(_table_rows_from_blocks(page_id))
+        except ValueError as e:
+            print("Table block read skipped:", e)
 
-    try:
-        rows.extend(_checklist_rows_from_blocks(page_id))
-    except ValueError as e:
-        print("Checklist block read skipped:", e)
+        try:
+            rows.extend(_checklist_rows_from_blocks(page_id))
+        except ValueError as e:
+            print("Checklist block read skipped:", e)
 
     return rows
 

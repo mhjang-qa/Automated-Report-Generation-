@@ -76,6 +76,25 @@ class NotionTCPaginationTests(unittest.TestCase):
         self.assertEqual(counts["iOS"]["PASS"], 1350)
         self.assertEqual(counts["iOS"]["NA"], 500)
 
+    def test_expected_result_is_not_treated_as_execution_result(self):
+        detected = legacy.detect_os_result_columns({
+            "TC-ID": "TC-001",
+            "Expected Result": "정상 처리",
+            "Test Item": "버튼 클릭",
+        })
+
+        self.assertEqual(detected["mode"], "unknown")
+
+    def test_bo_target_column_blank_counts_as_na(self):
+        aggregated = legacy.aggregate_results_by_page([
+            {"page_name": "HC", "row": {"TC-ID": "TC-001", "BO": ""}},
+            {"page_name": "HC", "row": {"TC-ID": "TC-002", "BO": "PASS"}},
+        ])
+
+        self.assertEqual(aggregated["HC"]["BO"]["TOTAL"], 2)
+        self.assertEqual(aggregated["HC"]["BO"]["NA"], 1)
+        self.assertEqual(aggregated["HC"]["BO"]["PASS"], 1)
+
     def test_manual_values_are_used_only_without_notion_data(self):
         result = generate_report(GenerateRequest(
             template_type="TC",
