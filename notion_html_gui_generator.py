@@ -29,6 +29,11 @@ RESULT_COLUMN_CANDIDATES = (
     "결과", "Result", "RESULT", "테스트 결과", "Test Result",
     "검증 결과", "진행 결과", "Status", "상태", "Result Status"
 )
+TC_COUNT_COLUMN_CANDIDATES = ("TC cnt", "TC Cnt", "TC count", "TC Count", "테스트 케이스 수", "TC수")
+TC_RELATION_COLUMN_CANDIDATES = (
+    "Action Items DB", "QA", "TC DB", "Test Case", "Test Cases",
+    "테스트 케이스", "테스트케이스"
+)
 OS_RESULT_COLUMN_ALIASES = {
     "AOS": ("AOS", "Android", "ANDROID", "안드로이드"),
     "iOS": ("iOS", "IOS", "아이폰", "아이오에스"),
@@ -49,6 +54,7 @@ END_STATUS_COLUMN_CANDIDATES = (
 )
 TARGET_SORT_ORDER = ("AOS", "iOS", "Web", "Admin", "Server", "Common", "미분류")
 RELATION_TITLE_CACHE = {}
+INACCESSIBLE_DATABASE_CACHE = set()
 
 
 def _load_env_file():
@@ -250,6 +256,74 @@ def aggregate_results_by_page(test_cases: list) -> dict:
     return aggregated
 
 
+def summarize_tc_cases(test_cases: list) -> dict:
+    """TC 원본 행 기준의 플랫폼별 입력/공란/기타 상태를 로그용으로 집계한다."""
+    summary = {
+        "rows": len(test_cases or []),
+        "AOS": {"PASS": 0, "FAIL": 0, "NA": 0, "OTHER": 0, "BLANK": 0},
+        "iOS": {"PASS": 0, "FAIL": 0, "NA": 0, "OTHER": 0, "BLANK": 0},
+    }
+
+    def add_result(os_name, raw_value):
+        canonical = _canonical_os(os_name)
+        if canonical not in ("AOS", "iOS"):
+            return
+        raw_text = "" if raw_value is None else str(raw_value).strip()
+        result = normalize_result(raw_value)
+        if not raw_text:
+            summary[canonical]["BLANK"] += 1
+        elif result in RESULT_KEYS:
+            summary[canonical][result] += 1
+        else:
+            summary[canonical]["OTHER"] += 1
+
+    for case in test_cases or []:
+        row = case.get("row") or {}
+        detected = detect_os_result_columns(row)
+        if detected["mode"] == "os_column":
+            add_result(row.get(detected["os_column"]), row.get(detected["result_column"]))
+        elif detected["mode"] == "os_result_columns":
+            for os_name, column in detected["columns"].items():
+                add_result(os_name, row.get(column))
+        elif detected["mode"] == "result_column":
+            os_name = (
+                row.get("OS")
+                or row.get("os")
+                or row.get("_os")
+                or _extract_os_from_text(case.get("page_name") or "")
+                or "미분류"
+            )
+            add_result(os_name, row.get(detected["result_column"]))
+
+    return summary
+
+
+def log_tc_aggregate_summary(test_cases: list, aggregated: dict):
+    summary = summarize_tc_cases(test_cases)
+    print(f"[AGGREGATE] 전체 TC 행 수: {summary['rows']}")
+    for os_name in ("AOS", "iOS"):
+        stats = summary[os_name]
+        print(
+            f"[AGGREGATE] {os_name} PASS={stats['PASS']} FAIL={stats['FAIL']} "
+            f"NA={stats['NA']} 기타={stats['OTHER']} 공란={stats['BLANK']}"
+        )
+
+    totals = {"AOS": {key: 0 for key in RESULT_KEYS}, "iOS": {key: 0 for key in RESULT_KEYS}}
+    for os_map in (aggregated or {}).values():
+        for os_name, counts in os_map.items():
+            canonical = _canonical_os(os_name)
+            if canonical not in totals:
+                continue
+            for key in RESULT_KEYS:
+                totals[canonical][key] += int(counts.get(key, 0) or 0)
+    for os_name in ("AOS", "iOS"):
+        total = sum(totals[os_name].values())
+        print(
+            f"[HTML] {os_name} SUM={total} "
+            f"(PASS={totals[os_name]['PASS']} FAIL={totals[os_name]['FAIL']} NA={totals[os_name]['NA']})"
+        )
+
+
 def _get_notion_token():
     _load_env_file()
     token = os.environ.get("NOTION_TOKEN") or os.environ.get("NOTION_API_KEY")
@@ -291,26 +365,42 @@ def _notion_request(method, path, payload=None, notion_version=NOTION_API_VERSIO
 def _notion_paginated(method, path, payload=None, notion_version=NOTION_API_VERSION):
     results = []
     cursor = None
+    page_no = 0
+    page_size = int((payload or {}).get("page_size") or 100)
     while True:
         current_payload = dict(payload or {})
+        if method == "POST" and "page_size" not in current_payload:
+            current_payload["page_size"] = page_size
         if cursor:
             current_payload["start_cursor"] = cursor
         current_path = path
-        if method == "GET" and cursor:
+        if method == "GET":
+            query = {"page_size": page_size}
+            if cursor:
+                query["start_cursor"] = cursor
             separator = "&" if "?" in current_path else "?"
-            current_path = f"{current_path}{separator}{urllib.parse.urlencode({'start_cursor': cursor})}"
+            current_path = f"{current_path}{separator}{urllib.parse.urlencode(query)}"
+        page_no += 1
         data = _notion_request(
             method,
             current_path,
             current_payload if method == "POST" else None,
             notion_version=notion_version,
         )
-        results.extend(data.get("results", []))
-        if not data.get("has_more"):
+        page_results = data.get("results", [])
+        results.extend(page_results)
+        has_more = bool(data.get("has_more"))
+        next_cursor = data.get("next_cursor")
+        print(
+            f"[NOTION] 조회 페이지 {page_no}: {len(page_results)}건 / "
+            f"누적 {len(results)}건 / has_more={has_more} / next_cursor={bool(next_cursor)}"
+        )
+        if not has_more:
             break
-        cursor = data.get("next_cursor")
+        cursor = next_cursor
         if not cursor:
             break
+    print(f"[NOTION] 최종 전체 행 수: {len(results)}")
     return results
 
 
@@ -465,6 +555,112 @@ def _page_title(page):
 
 def _page_properties_to_row(page):
     return {name: _property_value(prop, name) for name, prop in (page.get("properties") or {}).items()}
+
+
+def _relation_ids_from_property(prop):
+    if not prop or prop.get("type") != "relation":
+        return []
+    return [item.get("id") for item in prop.get("relation") or [] if item.get("id")]
+
+
+def _relation_ids_from_page(page, candidates=TC_RELATION_COLUMN_CANDIDATES):
+    props = page.get("properties") or {}
+    relation_ids = []
+    candidate_compacts = {
+        re.sub(r"[\s/_()\[\]-]+", "", str(candidate).strip().lower())
+        for candidate in candidates
+    }
+    for name, prop in props.items():
+        if prop.get("type") != "relation":
+            continue
+        name_compact = re.sub(r"[\s/_()\[\]-]+", "", str(name).strip().lower())
+        if name_compact in candidate_compacts:
+            for relation_id in _relation_ids_from_property(prop):
+                if relation_id not in relation_ids:
+                    relation_ids.append(relation_id)
+    return relation_ids
+
+
+def _tc_count_from_row(row):
+    column = _find_column(row, TC_COUNT_COLUMN_CANDIDATES)
+    if not column:
+        return 0
+    match = re.search(r"\d+", str(row.get(column, "") or ""))
+    return int(match.group(0)) if match else 0
+
+
+def _fetch_related_tc_rows(page, depth=2, visited=None):
+    if depth <= 0:
+        return []
+    visited = visited or set()
+    rows = []
+    for relation_id in _relation_ids_from_page(page):
+        if relation_id in visited:
+            continue
+        visited.add(relation_id)
+        try:
+            related_page = _notion_request("GET", f"/pages/{relation_id}")
+        except ValueError as e:
+            print("TC relation page read skipped:", relation_id, e)
+            continue
+
+        title = _page_title(related_page)
+        row = _page_properties_to_row(related_page)
+        if detect_os_result_columns(row).get("mode") != "unknown":
+            rows.append({"page_name": title, "row": row})
+
+        nested_relation_ids = _relation_ids_from_page(related_page)
+        if nested_relation_ids and depth > 1:
+            rows.extend(_fetch_related_tc_rows(related_page, depth=depth - 1, visited=visited))
+            continue
+
+        embedded_rows, saw_embedded_database = _embedded_database_tc_rows(relation_id, title)
+        rows.extend(embedded_rows)
+        if saw_embedded_database:
+            continue
+
+        for child_row in fetch_test_cases_from_page(relation_id, include_page_properties=False):
+            rows.append({"page_name": title, "row": child_row})
+
+        if depth > 1:
+            rows.extend(_fetch_related_tc_rows(related_page, depth=depth - 1, visited=visited))
+    return rows
+
+
+def _embedded_database_tc_rows(page_id, page_name):
+    rows = []
+    saw_database = False
+    try:
+        blocks = _list_block_children(page_id)
+    except ValueError as e:
+        print("Embedded TC database block read skipped:", page_id, e)
+        return rows, saw_database
+
+    for block in blocks:
+        btype = block.get("type")
+        database_id = ""
+        if btype == "child_database":
+            database_id = block.get("id")
+        elif btype == "link_to_page":
+            link = block.get("link_to_page", {})
+            if link.get("type") == "database_id":
+                database_id = link.get("database_id")
+        if not database_id:
+            continue
+        saw_database = True
+        if database_id in INACCESSIBLE_DATABASE_CACHE:
+            print("Embedded TC database query skipped from cache:", database_id)
+            continue
+        try:
+            for page in _query_database(database_id):
+                row = _page_properties_to_row(page)
+                if detect_os_result_columns(row).get("mode") != "unknown":
+                    rows.append({"page_name": page_name, "row": row})
+        except ValueError as e:
+            if "data source 접근 권한" in str(e) or "접근 권한" in str(e):
+                INACCESSIBLE_DATABASE_CACHE.add(database_id)
+            print("Embedded TC database query skipped:", database_id, e)
+    return rows, saw_database
 
 
 def _data_source_ids_from_database(database_id):
@@ -1687,28 +1883,36 @@ class NotionHtmlGeneratorGUI:
         all_cases = []
         children = []
         candidate_errors = []
+        expected_tc_total = 0
 
         for candidate_id in parsed.get("candidate_ids", [notion_id]):
             try:
                 self.set_status(f"Notion DB 행 조회 중: {candidate_id}")
+                print(f"[NOTION] 입력 URL: {parsed.get('source_url')}")
+                print(f"[NOTION] 추출된 Database ID 또는 Data Source ID: {candidate_id}")
                 pages = _query_database(candidate_id)
+                direct_cases = []
+                page_children = []
                 for page in pages:
                     if page.get("object") != "page":
                         continue
                     title = _page_title(page)
                     row = _page_properties_to_row(page)
+                    expected_tc_total += _tc_count_from_row(row)
                     if detect_os_result_columns(row).get("mode") != "unknown":
-                        all_cases.append({"page_name": title, "row": row})
-                    for child_row in fetch_test_cases_from_page(page["id"], include_page_properties=False):
-                        all_cases.append({"page_name": title, "row": child_row})
-                if all_cases:
+                        direct_cases.append({"page_name": title, "row": row})
+                    else:
+                        related_cases = _fetch_related_tc_rows(page, depth=2)
+                        if related_cases:
+                            direct_cases.extend(related_cases)
+                            continue
+                        page_children.append({"id": page["id"], "title": title, "page": page, "source": "database"})
+                print(f"[NOTION] DB 조회 결과: 전체 {len(pages)}건 / TC 컬럼 감지 {len(direct_cases)}건")
+                if direct_cases:
+                    all_cases.extend(direct_cases)
                     break
                 if pages:
-                    children = [
-                        {"id": page["id"], "title": _page_title(page), "page": page, "source": "database"}
-                        for page in pages
-                        if page.get("object") == "page"
-                    ]
+                    children = page_children
                     break
             except ValueError as e:
                 candidate_errors.append(str(e))
@@ -1747,9 +1951,25 @@ class NotionHtmlGeneratorGUI:
         if not all_cases:
             raise ValueError("테스트 케이스 컬럼을 찾지 못했습니다.")
 
+        if expected_tc_total and len(all_cases) < expected_tc_total:
+            raise ValueError(
+                "TC 전체 데이터를 모두 조회하지 못했습니다. "
+                f"Notion 상 TC cnt 합계는 {expected_tc_total}건이나 실제 수집은 {len(all_cases)}건입니다. "
+                "Action Items DB/QA 내부의 원본 TC 데이터베이스를 Notion Integration에 공유해주세요."
+            )
+
         aggregated = aggregate_results_by_page(all_cases)
         if not any(os_map for os_map in aggregated.values()):
             raise ValueError("PASS/FAIL/NA로 집계 가능한 결과값이 없습니다.")
+        log_tc_aggregate_summary(all_cases, aggregated)
+        tc_summary = summarize_tc_cases(all_cases)
+        aos_sum = sum(tc_summary["AOS"][key] for key in RESULT_KEYS) + tc_summary["AOS"]["BLANK"]
+        ios_sum = sum(tc_summary["iOS"][key] for key in RESULT_KEYS) + tc_summary["iOS"]["BLANK"]
+        self.set_status(
+            f"Notion 전체 TC {tc_summary['rows']}건 / "
+            f"AOS 집계 {aos_sum}건(공란 {tc_summary['AOS']['BLANK']}건) / "
+            f"iOS 집계 {ios_sum}건(공란 {tc_summary['iOS']['BLANK']}건)"
+        )
         return aggregated
 
     def generate_html(self):
