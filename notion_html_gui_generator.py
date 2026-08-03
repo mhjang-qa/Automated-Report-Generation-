@@ -1884,6 +1884,7 @@ class NotionHtmlGeneratorGUI:
         children = []
         candidate_errors = []
         expected_tc_total = 0
+        direct_cases_from_database = []
 
         for candidate_id in parsed.get("candidate_ids", [notion_id]):
             try:
@@ -1902,16 +1903,13 @@ class NotionHtmlGeneratorGUI:
                     if detect_os_result_columns(row).get("mode") != "unknown":
                         direct_cases.append({"page_name": title, "row": row})
                     else:
-                        related_cases = _fetch_related_tc_rows(page, depth=2)
-                        if related_cases:
-                            direct_cases.extend(related_cases)
-                            continue
                         page_children.append({"id": page["id"], "title": title, "page": page, "source": "database"})
                 print(f"[NOTION] DB 조회 결과: 전체 {len(pages)}건 / TC 컬럼 감지 {len(direct_cases)}건")
-                if direct_cases:
+                if direct_cases and not page_children:
                     all_cases.extend(direct_cases)
                     break
                 if pages:
+                    direct_cases_from_database.extend(direct_cases)
                     children = page_children
                     break
             except ValueError as e:
@@ -1940,6 +1938,8 @@ class NotionHtmlGeneratorGUI:
             for row in rows:
                 all_cases.append({"page_name": title, "row": row})
 
+        all_cases.extend(direct_cases_from_database)
+
         if not all_cases and candidate_errors:
             access_errors = [
                 error for error in candidate_errors
@@ -1952,10 +1952,10 @@ class NotionHtmlGeneratorGUI:
             raise ValueError("테스트 케이스 컬럼을 찾지 못했습니다.")
 
         if expected_tc_total and len(all_cases) < expected_tc_total:
-            raise ValueError(
-                "TC 전체 데이터를 모두 조회하지 못했습니다. "
-                f"Notion 상 TC cnt 합계는 {expected_tc_total}건이나 실제 수집은 {len(all_cases)}건입니다. "
-                "Action Items DB/QA 내부의 원본 TC 데이터베이스를 Notion Integration에 공유해주세요."
+            print(
+                "[NOTION] TC cnt 대비 상세 페이지 수집 수가 적습니다: "
+                f"TC cnt 합계 {expected_tc_total}건 / 상세 페이지 수집 {len(all_cases)}건. "
+                "일부 상세 페이지 내부 DB 접근 권한이 없을 수 있습니다."
             )
 
         aggregated = aggregate_results_by_page(all_cases)
