@@ -1344,7 +1344,10 @@ def generate_embed_html(payload):
         tc_ios_fail=_embed_int(payload, "tcIosFail", 36),
         tc_ios_na=_embed_int(payload, "tcIosNa", 147),
     )
-    result = generate_report(request)
+    try:
+        result = generate_report(request)
+    except ValueError as exc:
+        raise UserFacingError(str(exc), 400) from exc
     return {
         "html": result.html,
         "templateType": result.template_type,
