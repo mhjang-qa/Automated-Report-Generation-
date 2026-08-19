@@ -1159,9 +1159,10 @@ def test_info_blocks(title="", summary="", source_content=""):
             "callout": {
                 "icon": {"type": "emoji", "emoji": "🧪"},
                 "rich_text": rt("테스트 정보", True),
-                "children": [table_block(build_test_info_rows(title, summary, source_content))],
+                "children": [paragraph("요약 내용을 기반으로 자동 정리한 테스트 범위입니다.")],
             },
         },
+        table_block(build_test_info_rows(title, summary, source_content)),
     ]
 
 
