@@ -619,6 +619,7 @@ async function registerSummary() {
       sourceUrl: state.sourceUrl,
       title: state.title,
       summary: state.summary,
+      sourceContent: state.sourceContent,
     });
     state.notionPageId = data.page_id;
     state.notionPageUrl = data.url;
@@ -667,6 +668,8 @@ async function uploadTc() {
       pageId: state.notionPageId,
       tcMarkdown: state.tcMarkdown,
       summary: state.summary,
+      title: state.title,
+      sourceContent: state.sourceContent,
     });
     state.notionPageUrl = data.url || state.notionPageUrl;
     renderNotionLink();

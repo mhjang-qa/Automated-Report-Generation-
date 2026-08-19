@@ -1109,13 +1109,73 @@ def summary_blocks(summary):
     ]
 
 
-def summary_tc_layout_blocks(summary, tc_markdown=None):
+def infer_test_type(text):
+    compact = text.lower()
+    if any(keyword in compact for keyword in ["ui", "화면", "노출", "버튼", "팝업", "문구"]):
+        return "UI/기능 검증"
+    if any(keyword in compact for keyword in ["정책", "권한", "제한", "상태", "조건"]):
+        return "정책/기능 검증"
+    if any(keyword in compact for keyword in ["api", "db", "데이터", "저장", "정합성"]):
+        return "데이터 정합성/기능 검증"
+    return "기능/회귀 검증"
+
+
+def infer_platform(text):
+    compact = text.lower()
+    platforms = []
+    if any(keyword in compact for keyword in ["aos", "android", "안드로이드"]):
+        platforms.append("AOS")
+    if any(keyword in compact for keyword in ["ios", "iphone", "아이폰"]):
+        platforms.append("iOS")
+    if any(keyword in compact for keyword in ["web", "웹", "pc", "admin", "관리자"]):
+        platforms.append("Web")
+    if any(keyword in compact for keyword in ["app", "앱", "모바일"]):
+        for item in ["AOS", "iOS"]:
+            if item not in platforms:
+                platforms.append(item)
+    return " / ".join(platforms) if platforms else "AOS / iOS / Web"
+
+
+def build_test_info_rows(title="", summary="", source_content=""):
+    context = "\n".join([title or "", summary or "", source_content or ""])
+    test_name = draft_summary_title(title or "노션 티켓")
+    return [
+        ["구분", "내용"],
+        ["테스트 명칭", test_name],
+        ["테스트 유형", infer_test_type(context)],
+        ["대상 환경", "개발/스테이징 및 배포 전후 검증 환경"],
+        ["플랫폼", infer_platform(context)],
+        ["검증 방식", "요약 기반 기능/정책/예외/회귀 검증"],
+        ["검증 대상", title or "노션 티켓 변경 범위"],
+    ]
+
+
+def test_info_blocks(title="", summary="", source_content=""):
+    return [
+        heading("Test info.", 3),
+        {
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "icon": {"type": "emoji", "emoji": "🧪"},
+                "rich_text": rt("테스트 정보", True),
+                "children": [table_block(build_test_info_rows(title, summary, source_content))],
+            },
+        },
+    ]
+
+
+def summary_panel_blocks(summary, title="", source_content=""):
+    return [*summary_blocks(summary), *test_info_blocks(title, summary, source_content)]
+
+
+def summary_tc_layout_blocks(summary, tc_markdown=None, title="", source_content=""):
     right_children = [heading("테스트 케이스 - 초안", 2)]
     if tc_markdown:
         right_children.append(table_block(markdown_table_to_rows(tc_markdown)))
     else:
         right_children.append(paragraph("TC 생성 후 업로드하면 이 영역에 표로 저장됩니다."))
-    return [column_list(summary_blocks(summary), right_children)]
+    return [column_list(summary_panel_blocks(summary, title, source_content), right_children)]
 
 
 def markdown_summary_children(summary):
@@ -1144,7 +1204,7 @@ def draft_summary_title(title):
     return f"{base} {suffix}"
 
 
-def create_summary_page(source_url, title, summary, tc_generated=False):
+def create_summary_page(source_url, title, summary, tc_generated=False, source_content=""):
     db_id, title_name, _ = ensure_target_database()
     page_title = draft_summary_title(title)
     payload = {
@@ -1156,7 +1216,7 @@ def create_summary_page(source_url, title, summary, tc_generated=False):
             "생성 일시": {"date": {"start": datetime.now(timezone.utc).isoformat()}},
             "TC 생성 여부": {"checkbox": bool(tc_generated)},
         },
-        "children": summary_tc_layout_blocks(summary),
+        "children": summary_tc_layout_blocks(summary, title=title, source_content=source_content),
     }
     page = notion_request("POST", "/pages", payload)
     return {"page_id": page["id"], "url": page.get("url", "")}
@@ -1197,6 +1257,10 @@ def archive_generated_report_blocks(page_uuid):
             should_archive = True
         elif kind == "callout" and text == "작업 내용 요약":
             should_archive = True
+        elif kind == "callout" and text == "테스트 정보":
+            should_archive = True
+        elif kind in {"heading_1", "heading_2", "heading_3"} and text == "Test info.":
+            should_archive = True
         elif kind in {"heading_1", "heading_2", "heading_3"} and text.startswith("테스트 케이스"):
             should_archive = True
         elif kind == "table":
@@ -1205,14 +1269,14 @@ def archive_generated_report_blocks(page_uuid):
             archive_block(block["id"])
 
 
-def upload_tc(page_id, tc_markdown, summary=""):
+def upload_tc(page_id, tc_markdown, summary="", title="", source_content=""):
     if not page_id:
         raise UserFacingError("TC를 업로드할 노션 페이지 정보가 없습니다. 먼저 노션 등록을 완료해 주세요.", 400)
     page_uuid = normalize_uuid(page_id)
     rows = markdown_table_to_rows(tc_markdown)
     archive_generated_report_blocks(page_uuid)
     if summary:
-        children = summary_tc_layout_blocks(summary, tc_markdown)
+        children = summary_tc_layout_blocks(summary, tc_markdown, title=title, source_content=source_content)
     else:
         children = [heading("테스트 케이스 - 초안", 2), table_block(rows)]
     notion_request("PATCH", f"/blocks/{page_uuid}/children", {"children": children})
@@ -1297,11 +1361,12 @@ def register_summary(payload):
     source_url = (payload.get("sourceUrl") or payload.get("url") or "").strip()
     title = (payload.get("title") or "노션 티켓 요약").strip()
     summary = (payload.get("summary") or "").strip()
+    source_content = (payload.get("sourceContent") or "").strip()
     if not source_url:
         raise UserFacingError("원본 노션 링크가 없습니다. 먼저 분석 요약을 생성해 주세요.", 400)
     if not summary:
         raise UserFacingError("저장할 요약 결과가 없습니다.", 400)
-    return create_summary_page(source_url, title, summary, False)
+    return create_summary_page(source_url, title, summary, False, source_content)
 
 
 def login(payload):
@@ -1825,7 +1890,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = create_tc(payload)
             elif self.path == "/api/upload-tc":
                 page_id = payload.get("pageId") or payload.get("notionPageId")
-                result = upload_tc(page_id, payload.get("tcMarkdown") or "", payload.get("summary") or "")
+                result = upload_tc(
+                    page_id,
+                    payload.get("tcMarkdown") or "",
+                    payload.get("summary") or "",
+                    payload.get("title") or "",
+                    payload.get("sourceContent") or "",
+                )
             elif self.path == "/api/embed-html":
                 result = generate_embed_html(payload)
             elif self.path == "/api/embed-target-versions":
