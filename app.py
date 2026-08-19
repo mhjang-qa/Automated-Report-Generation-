@@ -848,16 +848,35 @@ def gemini_request(prompt, max_tokens=4096, request_id="-", operation="gemini", 
                             log_event(request_id, f"Gemini {operation} 503 failover to next model/key after model={model} key_label={key_name}")
                             break
                     raise last_user_error
-                except urllib.error.URLError as exc:
-                    log_event(request_id, f"Gemini {operation} network error model={model} key_label={key_name}: {exc}")
+                except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+                    log_event(request_id, f"Gemini {operation} network/timeout error model={model} key_label={key_name}: {exc}")
                     last_user_error = UserFacingError("Gemini API에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.", 502)
+                    if active_images:
+                        log_event(
+                            request_id,
+                            (
+                                f"Gemini {operation} network/timeout retry without images "
+                                f"model={model} key_label={key_name} image_count={len(active_images)}"
+                            ),
+                        )
+                        active_images = []
+                        payload = build_gemini_payload(prompt, max_tokens, active_images)
+                        payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                        log_event(
+                            request_id,
+                            (
+                                f"Gemini {operation} text-only payload prompt_length={len(prompt)} "
+                                f"payload_bytes={len(payload_bytes)} image_count=0"
+                            ),
+                        )
+                        continue
                     if attempt < 2:
                         sleep_s = 1.5 * (2 ** attempt)
-                        log_event(request_id, f"Gemini {operation} network retry model={model} key_label={key_name} sleep={sleep_s}")
+                        log_event(request_id, f"Gemini {operation} network/timeout retry model={model} key_label={key_name} sleep={sleep_s}")
                         time.sleep(sleep_s)
                         continue
                     if not is_final_combo:
-                        log_event(request_id, f"Gemini {operation} network failover to next model/key after model={model} key_label={key_name}")
+                        log_event(request_id, f"Gemini {operation} network/timeout failover to next model/key after model={model} key_label={key_name}")
                         break
                     raise last_user_error
                 except UserFacingError:
