@@ -31,6 +31,41 @@ body {
   background: #252423;
 }
 
+.app-tabs {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(18, 18, 18, 0.58);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.app-tab {
+  min-width: 116px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.app-tab.active {
+  background: #f7f7f4;
+  color: #252423;
+}
+
 .cold-status {
   position: absolute;
   left: 24px;
@@ -40,6 +75,20 @@ body {
   color: rgba(255, 255, 255, 0.88);
   text-align: center;
   pointer-events: none;
+}
+
+@media (max-width: 560px) {
+  .app-tabs {
+    left: 16px;
+    right: 16px;
+    justify-content: stretch;
+    transform: none;
+  }
+
+  .app-tab {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .cold-status p {
