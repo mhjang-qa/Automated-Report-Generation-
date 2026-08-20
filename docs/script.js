@@ -8,6 +8,7 @@ const APPS = {
   },
   defect: {
     label: "결함 대시보드",
+    staticUrl: "./defect-dashboard/hanpass-renewal.html",
     renderUrl: "https://notion-daily-defect-dashboard.onrender.com",
     healthPath: "/api/health",
     appPath: "/",
@@ -45,6 +46,12 @@ function isReady(data, app) {
 async function waitForRender(token = pollToken) {
   if (redirecting) return;
   const app = activeApp();
+  if (app.staticUrl) {
+    redirecting = true;
+    setMessage(`${app.label} 정적 화면으로 이동합니다.`, "GitHub Pages에 저장된 마지막 Snapshot을 표시합니다.");
+    window.setTimeout(() => window.location.replace(app.staticUrl), 250);
+    return;
+  }
   attempts += 1;
   try {
     const response = await fetch(`${app.renderUrl}${app.healthPath}?t=${Date.now()}`, {
