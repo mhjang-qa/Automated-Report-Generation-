@@ -21,6 +21,9 @@ const state = {
   localizationUrl: "",
   localizationRepoUrl: "https://github.com/mhjang-qa/go_hanpass_localization_validator",
   localizationWarmupToken: 0,
+  defectDashboardUrl: "https://notion-daily-defect-dashboard.onrender.com/",
+  defectDashboardEmbedUrl: "https://notion-daily-defect-dashboard.onrender.com/embed/hanpass-renewal",
+  defectDashboardWarmupToken: 0,
   loginBusy: false,
   isAnalyzing: false,
   geminiRetryUntil: 0,
@@ -42,10 +45,12 @@ const el = {
   embedTab: document.querySelector("#embedTab"),
   pixelTab: document.querySelector("#pixelTab"),
   localizationTab: document.querySelector("#localizationTab"),
+  defectDashboardTab: document.querySelector("#defectDashboardTab"),
   ticketView: document.querySelector("#ticketView"),
   embedView: document.querySelector("#embedView"),
   pixelView: document.querySelector("#pixelView"),
   localizationView: document.querySelector("#localizationView"),
+  defectDashboardView: document.querySelector("#defectDashboardView"),
   analyzeBtn: document.querySelector("#analyzeBtn"),
   registerBtn: document.querySelector("#registerBtn"),
   generateTcBtn: document.querySelector("#generateTcBtn"),
@@ -131,6 +136,11 @@ const el = {
   localizationReloadBtn: document.querySelector("#localizationReloadBtn"),
   localizationOpenBtn: document.querySelector("#localizationOpenBtn"),
   localizationRepoBtn: document.querySelector("#localizationRepoBtn"),
+  defectDashboardFrame: document.querySelector("#defectDashboardFrame"),
+  defectDashboardMessage: document.querySelector("#defectDashboardMessage"),
+  defectDashboardReloadBtn: document.querySelector("#defectDashboardReloadBtn"),
+  defectDashboardOpenBtn: document.querySelector("#defectDashboardOpenBtn"),
+  defectDashboardEmbedBtn: document.querySelector("#defectDashboardEmbedBtn"),
   workOverlay: document.querySelector("#workOverlay"),
   workTitle: document.querySelector("#workTitle"),
   workDetail: document.querySelector("#workDetail"),
@@ -271,19 +281,27 @@ function showLocalizationMessage(message, type = "") {
   el.localizationMessage.className = `message ${type}`.trim();
 }
 
+function showDefectDashboardMessage(message, type = "") {
+  el.defectDashboardMessage.textContent = message || "";
+  el.defectDashboardMessage.className = `message ${type}`.trim();
+}
+
 function switchTab(tabName) {
   const isTicket = tabName === "ticket";
   const isEmbed = tabName === "embed";
   const isPixel = tabName === "pixel";
   const isLocalization = tabName === "localization";
+  const isDefectDashboard = tabName === "defectDashboard";
   el.ticketTab.classList.toggle("active", isTicket);
   el.embedTab.classList.toggle("active", isEmbed);
   el.pixelTab.classList.toggle("active", isPixel);
   el.localizationTab.classList.toggle("active", isLocalization);
+  el.defectDashboardTab.classList.toggle("active", isDefectDashboard);
   el.ticketView.classList.toggle("hidden", !isTicket);
   el.embedView.classList.toggle("hidden", !isEmbed);
   el.pixelView.classList.toggle("hidden", !isPixel);
   el.localizationView.classList.toggle("hidden", !isLocalization);
+  el.defectDashboardView.classList.toggle("hidden", !isDefectDashboard);
   if (isEmbed) {
     el.phaseBadge.textContent = "HTML 생성";
     el.phaseBadge.className = "phase";
@@ -296,11 +314,57 @@ function switchTab(tabName) {
     el.phaseBadge.textContent = "다국어 검증";
     el.phaseBadge.className = "phase";
     loadLocalizationApp();
+  } else if (isDefectDashboard) {
+    el.phaseBadge.textContent = "결함 대시보드";
+    el.phaseBadge.className = "phase";
+    loadDefectDashboard();
   } else {
     el.phaseBadge.textContent = "대기 중";
     el.phaseBadge.className = "phase";
     el.notionUrl.focus();
   }
+}
+
+async function loadDefectDashboard(force = false) {
+  if (el.defectDashboardFrame.src && !force) return;
+  el.defectDashboardOpenBtn.href = state.defectDashboardUrl;
+  el.defectDashboardEmbedBtn.href = state.defectDashboardEmbedUrl;
+  await warmUpDefectDashboard();
+}
+
+async function warmUpDefectDashboard() {
+  const token = Date.now();
+  state.defectDashboardWarmupToken = token;
+  el.defectDashboardFrame.src = `/logding/?target=defect-dashboard&ts=${Date.now()}`;
+  showDefectDashboardMessage("결함 대시보드 서버를 깨우는 중입니다. 잠시만 기다려 주세요.", "warning");
+  const healthUrl = new URL("/api/health", state.defectDashboardUrl).toString();
+  const startedAt = Date.now();
+  const timeoutMs = 90000;
+  while (Date.now() - startedAt < timeoutMs) {
+    if (state.defectDashboardWarmupToken !== token) return;
+    try {
+      const res = await fetch(healthUrl, { cache: "no-store", mode: "cors" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && String(data.status || "").toLowerCase() === "ok") {
+        if (state.defectDashboardWarmupToken !== token) return;
+        el.defectDashboardFrame.src = state.defectDashboardUrl;
+        showDefectDashboardMessage(`연결 URL: ${state.defectDashboardUrl}`, "success");
+        return;
+      }
+    } catch (_) {
+      // Render free instances can take a while to wake. Keep the local loading screen visible.
+    }
+    await new Promise((resolve) => setTimeout(resolve, FLOOR_RISE_LOADING_DURATION_MS));
+  }
+  if (state.defectDashboardWarmupToken !== token) return;
+  el.defectDashboardFrame.src = state.defectDashboardUrl;
+  showDefectDashboardMessage("서버 응답이 지연되어 iframe에서 계속 로딩합니다.", "warning");
+}
+
+function reloadDefectDashboard() {
+  state.defectDashboardWarmupToken += 1;
+  el.defectDashboardFrame.src = "about:blank";
+  loadDefectDashboard(true);
 }
 
 async function loadLocalizationApp(force = false) {
@@ -1232,6 +1296,7 @@ el.ticketTab.addEventListener("click", () => switchTab("ticket"));
 el.embedTab.addEventListener("click", () => switchTab("embed"));
 el.pixelTab.addEventListener("click", () => switchTab("pixel"));
 el.localizationTab.addEventListener("click", () => switchTab("localization"));
+el.defectDashboardTab.addEventListener("click", () => switchTab("defectDashboard"));
 el.embedType.addEventListener("change", updateEmbedTypeFields);
 el.embedVersion.addEventListener("input", updateEmbedTypeFields);
 el.generateEmbedBtn.addEventListener("click", generateEmbedHtml);
@@ -1267,6 +1332,7 @@ el.pixelRenderBtn.addEventListener("click", pixelRender);
 el.pixelDeviceBtn.addEventListener("click", pixelOpenDevice);
 el.pixelOpenUrlBtn.addEventListener("click", pixelOpenUrl);
 el.localizationReloadBtn.addEventListener("click", reloadLocalizationApp);
+el.defectDashboardReloadBtn.addEventListener("click", reloadDefectDashboard);
 el.pixelModeWeb.addEventListener("change", applyPixelStage);
 el.pixelModeApp.addEventListener("change", applyPixelStage);
 el.pixelExcludeChrome.addEventListener("change", applyPixelStage);

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QA Support Hub</title>
-    <link rel="stylesheet" href="/styles.css?v=work-progress-20260714-1" />
+    <link rel="stylesheet" href="/styles.css?v=defect-dashboard-tab-20260820-1" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -43,6 +43,7 @@
         <button id="embedTab" class="tab" type="button" data-tab="embed">임베드 HTML 생성</button>
         <button id="pixelTab" class="tab" type="button" data-tab="pixel">PixelAudit</button>
         <button id="localizationTab" class="tab" type="button" data-tab="localization">다국어 검증</button>
+        <button id="defectDashboardTab" class="tab" type="button" data-tab="defectDashboard">결함 대시보드</button>
       </nav>
 
       <div id="ticketView" class="tab-view">
@@ -397,6 +398,26 @@
           </article>
         </section>
       </div>
+
+      <div id="defectDashboardView" class="tab-view hidden">
+        <section class="defect-dashboard-layout">
+          <article class="panel defect-dashboard-toolbar">
+            <div>
+              <h2>Notion Daily Defect Dashboard</h2>
+              <p class="meta">목표버전별 결함 Snapshot 추이와 Hanpass 앱개편 임베드 화면을 확인합니다.</p>
+            </div>
+            <div class="actions">
+              <button id="defectDashboardReloadBtn" class="ghost" type="button">새로고침</button>
+              <a id="defectDashboardOpenBtn" class="button-link primary" href="https://notion-daily-defect-dashboard.onrender.com/" target="_blank" rel="noreferrer">새 탭 열기</a>
+              <a id="defectDashboardEmbedBtn" class="button-link ghost" href="https://notion-daily-defect-dashboard.onrender.com/embed/hanpass-renewal" target="_blank" rel="noreferrer">임베드 열기</a>
+            </div>
+          </article>
+          <article class="panel defect-dashboard-frame-panel">
+            <div id="defectDashboardMessage" class="message" role="status" aria-live="polite">결함 대시보드를 불러오는 중입니다.</div>
+            <iframe id="defectDashboardFrame" class="defect-dashboard-frame" title="Notion Daily Defect Dashboard"></iframe>
+          </article>
+        </section>
+      </div>
     </main>
     <div id="workOverlay" class="work-overlay hidden" role="status" aria-live="polite" aria-atomic="true">
       <div class="work-card">
@@ -410,6 +431,6 @@
         <span id="workProgressBar"></span>
       </div>
     </div>
-    <script src="/app.js?v=work-progress-20260714-1"></script>
+    <script src="/app.js?v=defect-dashboard-tab-20260820-1"></script>
   </body>
 </html>

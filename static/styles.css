@@ -578,6 +578,30 @@ button:disabled {
   background: #fff;
 }
 
+.defect-dashboard-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.defect-dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.defect-dashboard-frame-panel {
+  padding: 12px;
+}
+
+.defect-dashboard-frame {
+  width: 100%;
+  min-height: 860px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .pixel-layout {
   display: grid;
   grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
@@ -807,6 +831,7 @@ button:disabled {
   .grid,
   .embed-layout,
   .localization-toolbar,
+  .defect-dashboard-toolbar,
   .pixel-layout,
   .pixel-compare-grid,
   .form-grid,
