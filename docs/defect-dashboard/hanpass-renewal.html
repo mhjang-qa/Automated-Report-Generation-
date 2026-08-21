@@ -102,6 +102,7 @@
       const versions = document.querySelector("#versions");
       const charts = document.querySelector("#charts");
       const stamp = document.querySelector("#stamp");
+      const ADMIN_ORIGIN = "https://notion-daily-defect-dashboard.onrender.com";
       const adminOpen = document.querySelector("#admin-open");
       const adminModal = document.querySelector("#admin-modal");
       const adminForm = document.querySelector("#admin-form");
@@ -396,8 +397,9 @@
         event.preventDefault();
         adminMessage.textContent = "확인 중입니다.";
         try {
-          const response = await fetch("/api/embed/hanpass-renewal/admin-login", {
+          const response = await fetch(`${ADMIN_ORIGIN}/api/embed/hanpass-renewal/admin-login`, {
             method: "POST",
+            credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ password: adminPassword.value }),
           });
@@ -406,7 +408,7 @@
             return;
           }
           localStorage.setItem("hanpassEmbedAdmin", "1");
-          window.location.href = "/embed/hanpass-renewal-admin";
+          window.location.href = `${ADMIN_ORIGIN}/embed/hanpass-renewal-admin`;
         } catch (error) {
           adminMessage.textContent = "관리자 확인에 실패했습니다.";
         }
