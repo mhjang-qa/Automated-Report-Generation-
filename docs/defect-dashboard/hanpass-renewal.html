@@ -84,7 +84,7 @@
     <div id="admin-modal" class="modal-backdrop" aria-hidden="true">
       <form id="admin-form" class="modal">
         <h2>관리자 확인</h2>
-        <p>동기화 화면은 관리자 비밀번호 확인 후 열립니다.</p>
+        <p>최신 결함 반영은 관리자 비밀번호 확인 후 동기화 화면에서 실행합니다.</p>
         <input type="text" name="username" value="admin" autocomplete="username" hidden />
         <label for="admin-password">비밀번호</label>
         <input id="admin-password" type="password" autocomplete="current-password" />
@@ -387,6 +387,7 @@
       }
 
       adminOpen.addEventListener("click", openAdminModal);
+      refreshPage.addEventListener("click", openAdminModal);
       adminCancel.addEventListener("click", closeAdminModal);
       adminModal.addEventListener("click", (event) => {
         if (event.target === adminModal) closeAdminModal();
@@ -410,14 +411,6 @@
           adminMessage.textContent = "관리자 확인에 실패했습니다.";
         }
       });
-      refreshPage.addEventListener("click", () => {
-        refreshPage.disabled = true;
-        refreshPage.textContent = "새로고침 중";
-        const url = new URL(window.location.href);
-        url.searchParams.set("refresh", String(Date.now()));
-        window.location.replace(url.toString());
-      });
-
       render();
     </script>
   </body>
