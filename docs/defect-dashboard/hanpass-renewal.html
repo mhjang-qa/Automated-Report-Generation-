@@ -9,19 +9,19 @@
         color: #1f2328;
         background: #f6f8fa;
         font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        font-size: 14px;
+        font-size: 12px;
       }
       * { box-sizing: border-box; }
       [hidden] { display: none !important; }
       body { margin: 0; background: #f6f8fa; }
-      .shell { width: min(100%, 1680px); margin: 0 auto; padding: 16px 24px 24px; }
-      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #d0d7de; }
+      .shell { width: min(100%, 1680px); margin: 0 auto; padding: 10px 18px 14px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #d0d7de; }
       h1, h2, p { margin: 0; }
-      h1 { font-size: 22px; line-height: 1.2; }
-      h2 { font-size: 15px; }
-      .subtitle, .panel-meta, .chart-head span, .legend, .stamp { color: #57606a; font-size: 12px; }
-      .top-actions { display: flex; align-items: center; gap: 8px; }
-      .action-link { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #24292f; font: inherit; font-size: 13px; font-weight: 750; text-decoration: none; cursor: pointer; }
+      h1 { font-size: 19px; line-height: 1.15; }
+      h2 { font-size: 13px; }
+      .subtitle, .panel-meta, .chart-head span, .legend, .stamp { color: #57606a; font-size: 11px; }
+      .top-actions { display: flex; align-items: center; gap: 6px; }
+      .action-link { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #24292f; font: inherit; font-size: 12px; font-weight: 750; text-decoration: none; cursor: pointer; }
       .action-link.primary { border-color: #1f6feb; background: #1f6feb; color: #fff; }
       .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; padding: 20px; background: rgb(31 35 40 / 46%); }
       .modal-backdrop.open { display: flex; }
@@ -33,37 +33,37 @@
       .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .modal-message { min-height: 18px; margin-top: 10px; color: #d1242f; font-size: 12px; }
       .stamp { text-align: right; }
-      .summary { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; margin: 14px 0; }
+      .summary { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; margin: 10px 0; }
       .card, .panel, .chart-panel { border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
-      .card { padding: 12px; }
-      .card span { display: block; color: #57606a; font-size: 12px; font-weight: 750; }
-      .card strong { display: block; margin-top: 6px; font-size: 28px; line-height: 1; }
+      .card { padding: 9px 10px; }
+      .card span { display: block; color: #57606a; font-size: 11px; font-weight: 750; }
+      .card strong { display: block; margin-top: 4px; font-size: 23px; line-height: 1; }
       .versions { display: grid; grid-template-columns: repeat(2, minmax(520px, 1fr)); gap: 12px; }
-      .panel, .chart-panel { min-width: 0; padding: 14px; }
-      .mini-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 12px 0; }
-      .mini-kpis div { padding: 10px; border: 1px solid #d8dee4; border-radius: 6px; background: #f6f8fa; }
-      .mini-kpis span { color: #57606a; font-size: 11px; font-weight: 750; }
-      .mini-kpis strong { display: block; margin-top: 4px; font-size: 20px; }
+      .panel, .chart-panel { min-width: 0; padding: 10px; }
+      .mini-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin: 9px 0; }
+      .mini-kpis div { padding: 8px; border: 1px solid #d8dee4; border-radius: 6px; background: #f6f8fa; }
+      .mini-kpis span { color: #57606a; font-size: 10px; font-weight: 750; }
+      .mini-kpis strong { display: block; margin-top: 3px; font-size: 17px; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 8px 6px; border-bottom: 1px solid #d8dee4; text-align: right; white-space: nowrap; }
+      th, td { padding: 5px 6px; border-bottom: 1px solid #d8dee4; text-align: right; white-space: nowrap; }
       th:first-child, td:first-child { text-align: left; }
       th { color: #57606a; font-size: 11px; font-weight: 750; }
       .empty { padding: 22px 0 10px; color: #57606a; text-align: center; }
-      .charts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 12px; margin-top: 12px; }
-      .chart-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-      .chart-box { width: 100%; height: 190px; }
+      .charts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 10px; margin-top: 8px; }
+      .chart-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+      .chart-box { width: 100%; height: 145px; }
       .chart-box svg { display: block; width: 100%; height: 100%; }
       .axis, .grid { stroke: #d8dee4; stroke-width: 1; }
-      .axis-label { fill: #57606a; font-size: 11px; }
-      .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
-      .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 50%; vertical-align: -1px; }
-      .severity-details { margin-top: 12px; }
-      .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-      .section-head p { color: #57606a; font-size: 12px; }
+      .axis-label { fill: #57606a; font-size: 10px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+      .legend i { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 50%; vertical-align: -1px; }
+      .severity-details { margin-top: 8px; }
+      .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+      .section-head p { color: #57606a; font-size: 11px; }
       .severity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
-      .severity-card { min-width: 0; padding: 14px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
-      .severity-card h3 { margin: 0; color: #57606a; font-size: 12px; font-weight: 750; }
-      .severity-card strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
+      .severity-card { min-width: 0; padding: 9px 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
+      .severity-card h3 { margin: 0; color: #57606a; font-size: 11px; font-weight: 750; }
+      .severity-card strong { display: block; margin-top: 4px; font-size: 22px; line-height: 1; }
       @media (max-width: 820px) {
         .topbar, .top-actions { display: grid; justify-items: start; }
         .versions, .charts, .severity-grid { grid-template-columns: 1fr; }
@@ -150,7 +150,8 @@
         if (!latest) {
           return `<article class="panel"><h2>${escapeHtml(group.version)}</h2><p class="empty">Snapshot 데이터가 없습니다. 관리자 동기화 후 다시 확인하세요.</p></article>`;
         }
-        const body = group.rows.slice(-10).reverse().map((row) => `
+        const rows = displayRows(group);
+        const body = rows.slice(-10).reverse().map((row) => `
           <tr>
             <td>${formatDate(row.snapshot_date)}</td>
             <td>${row.total_count}</td>
@@ -206,14 +207,18 @@
       }
 
       function combinedRows(groups) {
-        const dates = Array.from(new Set(groups.flatMap((group) => group.rows.map((row) => row.snapshot_date)))).sort();
+        const preparedGroups = groups.map((group) => ({ ...group, displayRows: displayRows(group) }));
+        const dates = Array.from(new Set(preparedGroups.flatMap((group) => group.displayRows.map((row) => row.snapshot_date)))).sort();
         return dates.map((date) => {
           const item = { snapshot_date: date };
-          groups.forEach((group, groupIndex) => {
-            const row = group.rows.find((candidate) => candidate.snapshot_date === date) || {};
-            ["total_count", "new_count", "unresolved_count", "in_progress_count", "qa_verified_count", "resolved_count", "completed_today_count"].forEach((key) => {
-              item[`g${groupIndex}_${key}`] = Number(row[key]) || 0;
+          preparedGroups.forEach((group, groupIndex) => {
+            const exact = group.displayRows.find((candidate) => candidate.snapshot_date === date);
+            const carry = [...group.displayRows].reverse().find((candidate) => candidate.snapshot_date <= date) || {};
+            ["total_count", "unresolved_count", "in_progress_count", "qa_verified_count", "resolved_count"].forEach((key) => {
+              item[`g${groupIndex}_${key}`] = Number((exact || carry)[key]) || 0;
             });
+            item[`g${groupIndex}_new_count`] = exact ? Number(exact.new_count) || 0 : 0;
+            item[`g${groupIndex}_completed_today_count`] = exact ? Number(exact.completed_today_count) || 0 : 0;
           });
           return item;
         });
@@ -221,6 +226,65 @@
 
       function groupLabel(version) {
         return version.includes("[BO]") ? "BO" : "앱";
+      }
+
+      function displayRows(group) {
+        const latest = group.rows[group.rows.length - 1];
+        const items = group.items || [];
+        if (latest && items.length) return createdDateRows(items, latest);
+        return compactSnapshotRows(group.rows || []);
+      }
+
+      function compactSnapshotRows(rows) {
+        return rows.filter((row, index) => {
+          if (index === 0) return true;
+          const previous = rows[index - 1];
+          return row.new_count ||
+            row.total_count !== previous.total_count ||
+            row.unresolved_count !== previous.unresolved_count ||
+            row.in_progress_count !== previous.in_progress_count ||
+            (row.qa_verified_count || 0) !== (previous.qa_verified_count || 0) ||
+            row.resolved_count !== previous.resolved_count;
+        });
+      }
+
+      function createdDateRows(items, latest) {
+        const datedItems = items
+          .map((item) => ({ ...item, createdDate: itemCreatedDate(item) }))
+          .filter((item) => item.createdDate);
+        const dates = Array.from(new Set(datedItems.map((item) => item.createdDate))).sort();
+        if (!dates.length) return compactSnapshotRows([latest]);
+        return dates.map((date) => {
+          const cumulative = datedItems.filter((item) => item.createdDate <= date);
+          const createdToday = datedItems.filter((item) => item.createdDate === date);
+          const resolved = cumulative.filter((item) => item.status_group === "resolved").length;
+          const inProgress = cumulative.filter((item) => item.status_group === "in_progress").length;
+          const qaVerified = cumulative.filter((item) => item.status_group === "qa_verified").length;
+          const total = cumulative.length;
+          return {
+            ...latest,
+            snapshot_date: date,
+            total_count: total,
+            new_count: createdToday.length,
+            unresolved_count: total - resolved - inProgress - qaVerified,
+            in_progress_count: inProgress,
+            qa_verified_count: qaVerified,
+            resolved_count: resolved,
+            completed_today_count: createdToday.filter((item) => item.status_group === "resolved").length,
+            net_change_count: createdToday.length,
+            resolution_rate: total ? (resolved / total) * 100 : 0,
+          };
+        });
+      }
+
+      function itemCreatedDate(item) {
+        if (!item.notion_created_at) return "";
+        const date = new Date(item.notion_created_at);
+        if (Number.isNaN(date.getTime())) return "";
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
       }
 
       function renderSeverityDetails(groups) {
@@ -283,7 +347,7 @@
       }
 
       function renderCharts(groups) {
-        const activeGroups = groups.filter((group) => group.rows.length);
+        const activeGroups = groups.filter((group) => displayRows(group).length);
         const rows = combinedRows(activeGroups);
         if (!rows.length) {
           return `<article class="chart-panel"><div class="chart-head"><h2>Daily Defect Trend</h2><span>전체 / 미처리 / 처리중 / 완료</span></div><p class="empty">그래프를 표시할 Snapshot 데이터가 없습니다.</p></article>`;
@@ -337,8 +401,8 @@
 
       function chartScales(rows, keys) {
         const width = 760;
-        const height = 200;
-        const pad = { left: 44, right: 16, top: 12, bottom: 30 };
+        const height = 170;
+        const pad = { left: 40, right: 14, top: 10, bottom: 26 };
         const values = rows.flatMap((row) => keys.map((key) => Number(row[key]) || 0));
         const maxValue = Math.max(1, ...values);
         const roundedMax = Math.max(4, Math.ceil(maxValue / 4) * 4);
