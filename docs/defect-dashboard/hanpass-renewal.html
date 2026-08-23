@@ -60,22 +60,10 @@
       .severity-details { margin-top: 12px; }
       .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
       .section-head p { color: #57606a; font-size: 12px; }
-      .severity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; }
+      .severity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
       .severity-card { min-width: 0; padding: 14px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
-      .severity-card h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 14px; }
-      .severity-card h3 span { color: #57606a; font-size: 12px; font-weight: 750; }
-      .severity-table-wrap { max-height: 360px; overflow: auto; border-top: 1px solid #d8dee4; }
-      .detail-table th, .detail-table td { text-align: left; white-space: normal; vertical-align: top; }
-      .detail-table th:first-child, .detail-table td:first-child { width: 52px; }
-      .detail-table th:nth-child(2), .detail-table td:nth-child(2) { width: 116px; }
-      .detail-table th:nth-child(3), .detail-table td:nth-child(3) { width: 86px; }
-      .defect-title { color: #0969da; font-weight: 650; text-decoration: none; }
-      .defect-title:hover { text-decoration: underline; }
-      .badge { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border-radius: 999px; background: #f6f8fa; color: #57606a; font-size: 12px; font-weight: 750; }
-      .badge.unresolved { background: #fff8c5; color: #7d4e00; }
-      .badge.in_progress { background: #ddf4ff; color: #0550ae; }
-      .badge.qa_verified { background: #fbefff; color: #8250df; }
-      .badge.resolved { background: #dafbe1; color: #116329; }
+      .severity-card h3 { margin: 0; color: #57606a; font-size: 12px; font-weight: 750; }
+      .severity-card strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
       @media (max-width: 820px) {
         .topbar, .top-actions { display: grid; justify-items: start; }
         .versions, .charts, .severity-grid { grid-template-columns: 1fr; }
@@ -261,28 +249,11 @@
         });
         const cards = Array.from(bySeverity.entries())
           .sort(([left], [right]) => severityRank(left) - severityRank(right) || left.localeCompare(right, "ko"))
-          .map(([severity, bucket]) => {
-            const rows = bucket
-              .sort((a, b) => a.versionLabel.localeCompare(b.versionLabel, "ko") || statusRank(a.status_group) - statusRank(b.status_group) || String(a.title).localeCompare(String(b.title), "ko"))
-              .map((item) => `
-                <tr>
-                  <td>${escapeHtml(item.versionLabel)}</td>
-                  <td><span class="badge ${escapeHtml(item.status_group || "unresolved")}">${statusGroupLabel(item.status_group)} · ${escapeHtml(item.status || "-")}</span></td>
-                  <td>${escapeHtml(item.priority || "-")}</td>
-                  <td>${item.url ? `<a class="defect-title" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || "(제목 없음)")}</a>` : escapeHtml(item.title || "(제목 없음)")}</td>
-                </tr>`)
-              .join("");
-            return `
-              <article class="severity-card">
-                <h3>${escapeHtml(severity)} <span>${bucket.length}건</span></h3>
-                <div class="severity-table-wrap">
-                  <table class="detail-table">
-                    <thead><tr><th>구분</th><th>상태</th><th>우선순위</th><th>결함명</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                  </table>
-                </div>
-              </article>`;
-          })
+          .map(([severity, bucket]) => `
+            <article class="severity-card">
+              <h3>${escapeHtml(severity)}</h3>
+              <strong>${bucket.length}</strong>
+            </article>`)
           .join("");
         return `
           <div class="section-head">
@@ -309,19 +280,6 @@
         if (lower.includes("low") || value.includes("낮")) return 4;
         if (value.includes("미지정")) return 99;
         return 10;
-      }
-
-      function statusRank(value) {
-        return { unresolved: 0, in_progress: 1, qa_verified: 2, resolved: 3 }[value] ?? 9;
-      }
-
-      function statusGroupLabel(value) {
-        return {
-          unresolved: "미처리",
-          in_progress: "처리중",
-          qa_verified: "QA 확인 완료",
-          resolved: "완료",
-        }[value] || "미처리";
       }
 
       function renderCharts(groups) {
