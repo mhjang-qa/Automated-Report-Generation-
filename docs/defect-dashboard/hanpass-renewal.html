@@ -57,13 +57,15 @@
       .axis-label { fill: #57606a; font-size: 10px; }
       .legend { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
       .legend i { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 50%; vertical-align: -1px; }
-      .severity-details { margin-top: 8px; }
+      .severity-details { margin-top: 0; }
       .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
       .section-head p { color: #57606a; font-size: 11px; }
-      .severity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+      .severity-grid { display: grid; grid-template-columns: 1fr; gap: 7px; }
       .severity-card { min-width: 0; padding: 9px 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .severity-card h3 { margin: 0; color: #57606a; font-size: 11px; font-weight: 750; }
       .severity-card strong { display: block; margin-top: 4px; font-size: 22px; line-height: 1; }
+      .severity-panel { align-self: stretch; }
+      .severity-panel .section-head { align-items: flex-start; }
       .tabs { display: inline-flex; align-items: center; gap: 4px; }
       .tab { min-height: 30px; padding: 0 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #57606a; font: inherit; font-weight: 750; cursor: pointer; }
       .tab.active { border-color: #1f6feb; background: #1f6feb; color: #fff; }
@@ -103,7 +105,6 @@
       <section id="defect-pane" class="tab-pane">
         <section id="summary" class="summary"></section>
         <section id="versions" class="versions"></section>
-        <section id="severity-details" class="severity-details"></section>
         <section id="charts" class="charts"></section>
       </section>
       <section id="testcase-pane" class="tab-pane" hidden>
@@ -130,7 +131,6 @@
       const DATA = JSON.parse(document.querySelector("#snapshot-data").textContent);
       const summary = document.querySelector("#summary");
       const versions = document.querySelector("#versions");
-      const severityDetails = document.querySelector("#severity-details");
       const charts = document.querySelector("#charts");
       const stamp = document.querySelector("#stamp");
       const tabButtons = Array.from(document.querySelectorAll(".tab"));
@@ -168,8 +168,7 @@
           ["QA 확인 완료", qaVerified],
           ["완료", resolved],
         ].map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
-        versions.innerHTML = groups.map(renderGroup).join("");
-        severityDetails.innerHTML = renderSeverityDetails(groups);
+        versions.innerHTML = groups.map(renderGroup).join("") + renderSeverityDetails(groups);
         charts.innerHTML = renderCharts(groups);
       }
 
@@ -420,7 +419,7 @@
         })));
         if (!items.length) {
           return `
-            <article class="severity-card">
+            <article class="panel severity-panel">
               <div class="section-head">
                 <div>
                   <h2>심각도별 결함 상세</h2>
@@ -446,14 +445,16 @@
             </article>`)
           .join("");
         return `
-          <div class="section-head">
-            <div>
-              <h2>심각도별 결함 상세</h2>
-              <p>최신 Snapshot 기준, Native/BO/기획 결함을 심각도 등급별로 분류합니다.</p>
+          <article class="panel severity-panel">
+            <div class="section-head">
+              <div>
+                <h2>심각도별 결함 상세</h2>
+                <p>최신 Snapshot 기준, Native/BO/기획 결함을 심각도 등급별로 분류합니다.</p>
+              </div>
+              <p>총 ${items.length}건</p>
             </div>
-            <p>총 ${items.length}건</p>
-          </div>
-          <div class="severity-grid">${cards}</div>`;
+            <div class="severity-grid">${cards}</div>
+          </article>`;
       }
 
       function normalizeSeverity(value) {
