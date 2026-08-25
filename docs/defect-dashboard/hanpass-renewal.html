@@ -183,7 +183,7 @@
           renderTestCases(await response.json());
         } catch (error) {
           tcSummary.innerHTML = "";
-          tcDetails.innerHTML = `<article class="tc-panel"><p class="empty">테스트케이스 현황을 불러오지 못했습니다.</p></article>`;
+          tcDetails.innerHTML = `<article class="tc-panel"><p class="empty">테스트케이스 데이터를 찾지 못했습니다. Notion 공유 또는 원본 DB 링크를 확인하세요.</p></article>`;
         }
       }
 
