@@ -70,10 +70,13 @@
       .tab { min-height: 30px; padding: 0 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #57606a; font: inherit; font-weight: 750; cursor: pointer; }
       .tab.active { border-color: #1f6feb; background: #1f6feb; color: #fff; }
       .tab-pane[hidden] { display: none !important; }
-      .progress-list { display: grid; gap: 8px; }
-      .progress-row { display: grid; grid-template-columns: 92px 1fr 54px; align-items: center; gap: 8px; }
-      .track { height: 9px; overflow: hidden; border-radius: 999px; background: #d8dee4; }
-      .fill { display: block; height: 100%; border-radius: inherit; background: #1f6feb; }
+      .platform-donuts { display: grid; grid-template-columns: repeat(3, minmax(104px, 1fr)); gap: 8px; }
+      .donut-card { display: grid; justify-items: center; gap: 6px; min-width: 0; padding: 10px 8px; border: 1px solid #d8dee4; border-radius: 8px; background: #f6f8fa; }
+      .donut-ring { position: relative; display: grid; place-items: center; width: 86px; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(var(--donut-color) var(--donut-rate), #d8dee4 0); }
+      .donut-ring::before { content: ""; position: absolute; inset: 11px; border: 1px solid #d8dee4; border-radius: 50%; background: #fff; }
+      .donut-value { position: relative; z-index: 1; font-size: 17px; font-weight: 800; }
+      .donut-label { font-size: 12px; font-weight: 800; }
+      .donut-meta { color: #57606a; font-size: 11px; }
       .tc-layout { display: grid; grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.4fr); gap: 10px; margin-top: 10px; }
       .tc-panel { min-width: 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .tc-table td:first-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
@@ -86,6 +89,7 @@
       }
       @media (max-width: 520px) {
         .severity-grid { grid-template-columns: 1fr; }
+        .platform-donuts { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -200,13 +204,17 @@
 
         const platforms = data.platforms || [];
         const pages = data.pages || [];
-        const platformRows = platforms.length
-          ? platforms.map((platform) => `
-              <div class="progress-row">
-                <strong>${escapeHtml(platform.platform)}</strong>
-                <span class="track"><span class="fill" style="width:${Math.min(100, Number(platform.progress_rate || 0))}%"></span></span>
-                <span>${Number(platform.progress_rate || 0).toFixed(1)}%</span>
-              </div>`).join("")
+        const platformCards = platforms.length
+          ? platforms.map((platform) => {
+              const rate = Math.min(100, Math.max(0, Number(platform.progress_rate || 0)));
+              const done = Number(platform.pass_count || 0) + Number(platform.fail_count || 0) + Number(platform.na_count || 0);
+              return `
+                <div class="donut-card">
+                  <div class="donut-ring" style="--donut-rate:${rate}%;--donut-color:${platformColor(platform.platform)}"><span class="donut-value">${rate.toFixed(1)}%</span></div>
+                  <div class="donut-label">${escapeHtml(platform.platform)}</div>
+                  <div class="donut-meta">${done} / ${platform.total_count || 0}</div>
+                </div>`;
+            }).join("")
           : `<p class="empty">OS별 테스트 결과가 없습니다.</p>`;
         const pageRows = pages.length
           ? pages.map((page) => `
@@ -223,7 +231,7 @@
         tcDetails.innerHTML = `
           <article class="tc-panel">
             <div class="chart-head"><h2>OS별 진행률</h2><span>PASS / FAIL / NA 기준</span></div>
-            <div class="progress-list">${platformRows}</div>
+            <div class="platform-donuts">${platformCards}</div>
           </article>
           <article class="tc-panel">
             <div class="chart-head"><h2>페이지별 테스트케이스</h2><span>빈값은 미진행</span></div>
@@ -342,6 +350,15 @@
       function groupDash(groupIndex) {
         return ["", "6 4", "2 5"][groupIndex % 3];
       }
+
+      function platformColor(platform) {
+        const key = String(platform || "").toLowerCase();
+        if (key === "aos") return "#1f6feb";
+        if (key === "ios") return "#8250df";
+        if (key === "bo") return "#bf8700";
+        return "#57606a";
+      }
+
 
       function displayRows(group) {
         const latest = group.rows[group.rows.length - 1];
