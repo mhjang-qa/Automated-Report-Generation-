@@ -542,13 +542,13 @@
           </article>`;
       }
 
-      function chartScales(rows, keys) {
+      function chartScales(rows, keys, minRoundedMax = 4) {
         const width = 760;
         const height = 170;
         const pad = { left: 40, right: 14, top: 10, bottom: 26 };
         const values = rows.flatMap((row) => keys.map((key) => Number(row[key]) || 0));
         const maxValue = Math.max(1, ...values);
-        const roundedMax = Math.max(4, Math.ceil(maxValue / 4) * 4);
+        const roundedMax = Math.max(minRoundedMax, Math.ceil(maxValue / 4) * 4);
         const plotWidth = width - pad.left - pad.right;
         const plotHeight = height - pad.top - pad.bottom;
         const x = (index) => pad.left + (rows.length <= 1 ? plotWidth / 2 : (plotWidth / (rows.length - 1)) * index);
@@ -567,7 +567,7 @@
       }
 
       function lineChart(rows, series) {
-        const scale = chartScales(rows, series.map(([key]) => key));
+        const scale = chartScales(rows, series.map(([key]) => key), 300);
         const lines = series.map(([key, color, label, dash]) => {
           const points = rows.map((row, index) => `${scale.x(index)},${scale.y(row[key])}`).join(" ");
           const dots = rows.map((row, index) => `<circle cx="${scale.x(index)}" cy="${scale.y(row[key])}" r="3.5" fill="${color}"><title>${formatDate(row.snapshot_date)} ${label}: ${row[key]}</title></circle>`).join("");
