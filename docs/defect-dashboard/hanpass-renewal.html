@@ -69,6 +69,10 @@
       .severity-card { min-width: 0; padding: 9px 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .severity-card h3 { margin: 0; color: #57606a; font-size: 11px; font-weight: 750; }
       .severity-card strong { display: block; margin-top: 4px; font-size: 22px; line-height: 1; }
+      .severity-card.severity-critical { border-color: #f1aeb5; background: linear-gradient(135deg, #fff1f2 0%, #ffd6dc 52%, #ffb3bd 100%); }
+      .severity-card.severity-major { border-color: #9ec5fe; background: linear-gradient(135deg, #eff6ff 0%, #bfdbfe 52%, #93c5fd 100%); }
+      .severity-card.severity-minor { border-color: #f4d35e; background: linear-gradient(135deg, #fffbea 0%, #fde68a 52%, #facc15 100%); }
+      .severity-card.severity-critical h3, .severity-card.severity-major h3, .severity-card.severity-minor h3 { color: #1f2328; }
       .severity-panel { align-self: stretch; }
       .severity-panel .section-head { align-items: flex-start; }
       .tabs { display: inline-flex; align-items: center; gap: 4px; }
@@ -492,11 +496,19 @@
         return Array.from(bySeverity.entries())
           .sort(([left], [right]) => severityRank(left) - severityRank(right) || left.localeCompare(right, "ko"))
           .map(([severity, bucket]) => `
-            <article class="severity-card">
+            <article class="severity-card ${severityClass(severity)}">
               <h3>${escapeHtml(severity)}</h3>
               <strong>${bucket.length}</strong>
             </article>`)
           .join("");
+      }
+
+      function severityClass(value) {
+        const normalized = String(value || "").trim().toLowerCase();
+        if (normalized === "critical") return "severity-critical";
+        if (normalized === "major") return "severity-major";
+        if (normalized === "minor") return "severity-minor";
+        return "";
       }
 
       function normalizeSeverity(value) {
