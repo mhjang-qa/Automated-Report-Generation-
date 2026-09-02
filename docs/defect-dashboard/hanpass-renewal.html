@@ -33,14 +33,14 @@
       .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .modal-message { min-height: 18px; margin-top: 10px; color: #d1242f; font-size: 12px; }
       .stamp { text-align: right; }
-      .summary { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; margin: 10px 0; }
+      .summary { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }
       .card, .panel, .chart-panel { border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .card { padding: 9px 10px; }
       .card span { display: block; color: #57606a; font-size: 11px; font-weight: 750; }
       .card strong { display: block; margin-top: 4px; font-size: 23px; line-height: 1; }
       .versions { display: grid; grid-template-columns: repeat(2, minmax(520px, 1fr)); gap: 12px; }
       .panel, .chart-panel { min-width: 0; padding: 10px; }
-      .mini-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin: 9px 0; }
+      .mini-kpis { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; margin: 9px 0; }
       .mini-kpis div { padding: 8px; border: 1px solid #d8dee4; border-radius: 6px; background: #f6f8fa; }
       .mini-kpis span { color: #57606a; font-size: 10px; font-weight: 750; }
       .mini-kpis strong { display: block; margin-top: 3px; font-size: 17px; }
@@ -172,6 +172,7 @@
         const unresolved = latestRows.reduce((sum, row) => sum + row.unresolved_count, 0);
         const progress = latestRows.reduce((sum, row) => sum + row.in_progress_count, 0);
         const qaVerified = latestRows.reduce((sum, row) => sum + (row.qa_verified_count || 0), 0);
+        const reopened = groups.reduce((sum, group) => sum + reopenedCount(group), 0);
         const resolved = latestRows.reduce((sum, row) => sum + row.resolved_count, 0);
         stamp.textContent = `Generated ${formatDateTime(DATA.generatedAt)}`;
         summary.innerHTML = [
@@ -180,6 +181,7 @@
           ["미처리", unresolved],
           ["처리중", progress],
           ["QA 확인 완료", qaVerified],
+          ["Reopen", reopened],
           ["완료", resolved],
         ].map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
         versions.innerHTML = groups.map(renderGroup).join("") + renderSeverityDetails(groups);
@@ -269,6 +271,7 @@
             <td>${row.unresolved_count}</td>
             <td>${row.in_progress_count}</td>
             <td>${row.qa_verified_count || 0}</td>
+            <td>${row.reopened_count || 0}</td>
             <td>${row.resolved_count}</td>
             <td>${Number(row.resolution_rate).toFixed(1)}%</td>
           </tr>`).join("");
@@ -282,11 +285,12 @@
               <div><span>미처리</span><strong>${latest.unresolved_count}</strong></div>
               <div><span>처리중</span><strong>${latest.in_progress_count}</strong></div>
               <div><span>QA 확인 완료</span><strong>${latest.qa_verified_count || 0}</strong></div>
+              <div><span>Reopen</span><strong>${reopenedCount(group)}</strong></div>
               <div><span>완료</span><strong>${latest.resolved_count}</strong></div>
             </div>
             <div class="version-table-wrap">
               <table>
-                <thead><tr><th>날짜</th><th>전체</th><th>신규</th><th>미처리</th><th>처리중</th><th>QA 확인 완료</th><th>완료</th><th>처리율</th></tr></thead>
+                <thead><tr><th>날짜</th><th>전체</th><th>신규</th><th>미처리</th><th>처리중</th><th>QA 확인 완료</th><th>Reopen</th><th>완료</th><th>처리율</th></tr></thead>
                 <tbody>${body}</tbody>
               </table>
             </div>
@@ -303,6 +307,7 @@
             unresolved_count: 0,
             in_progress_count: 0,
             qa_verified_count: 0,
+            reopened_count: 0,
             resolved_count: 0,
             completed_today_count: 0,
           };
@@ -311,6 +316,7 @@
           current.unresolved_count += row.unresolved_count;
           current.in_progress_count += row.in_progress_count;
           current.qa_verified_count += row.qa_verified_count || 0;
+          current.reopened_count += row.reopened_count || 0;
           current.resolved_count += row.resolved_count;
           current.completed_today_count += row.completed_today_count;
           byDate.set(row.snapshot_date, current);
@@ -384,6 +390,7 @@
             row.unresolved_count !== previous.unresolved_count ||
             row.in_progress_count !== previous.in_progress_count ||
             (row.qa_verified_count || 0) !== (previous.qa_verified_count || 0) ||
+            (row.reopened_count || 0) !== (previous.reopened_count || 0) ||
             row.resolved_count !== previous.resolved_count;
         });
       }
@@ -405,6 +412,7 @@
           const inProgress = cumulative.filter((item) => item.status_group === "in_progress").length;
           const qaVerifiedCumulative = cumulative.filter((item) => item.status_group === "qa_verified").length;
           const qaVerifiedToday = datedItems.filter((item) => item.qa_verified_first_seen_date === date).length;
+          const reopenedToday = datedItems.filter((item) => isReopenedStatus(item.status) && item.createdDate === date).length;
           const resolvedToday = datedItems.filter((item) => item.resolved_first_seen_date === date).length;
           const total = cumulative.length;
           return {
@@ -415,13 +423,14 @@
             unresolved_count: total - resolvedCumulative - inProgress - qaVerifiedCumulative,
             in_progress_count: inProgress,
             qa_verified_count: qaVerifiedToday,
+            reopened_count: reopenedToday,
             resolved_count: resolvedToday,
             completed_today_count: resolvedToday,
             net_change_count: createdToday.length - resolvedToday,
             resolution_rate: total ? ((resolvedCumulative + qaVerifiedCumulative) / total) * 100 : 0,
           };
         }).filter((row, index, rows) => {
-          if (row.new_count || row.qa_verified_count || row.resolved_count) return true;
+          if (row.new_count || row.qa_verified_count || row.reopened_count || row.resolved_count) return true;
           if (index === rows.length - 1) return true;
           return false;
         });
@@ -435,6 +444,17 @@
         const month = String(date.getMonth() + 1).padStart(2, "0");
         const day = String(date.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
+      }
+
+      function isReopenedStatus(status) {
+        return String(status || "").trim() === "결함 재발생 (Reopen)";
+      }
+
+      function reopenedCount(group) {
+        const items = group.items || [];
+        if (items.length) return items.filter((item) => isReopenedStatus(item.status)).length;
+        const latest = (group.rows || [])[group.rows.length - 1] || {};
+        return Number(latest.reopened_count) || 0;
       }
 
       function renderSeverityDetails(groups) {
