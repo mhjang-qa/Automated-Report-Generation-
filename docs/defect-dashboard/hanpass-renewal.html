@@ -33,14 +33,14 @@
       .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .modal-message { min-height: 18px; margin-top: 10px; color: #d1242f; font-size: 12px; }
       .stamp { text-align: right; }
-      .summary { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; margin: 10px 0; }
+      .summary { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }
       .card, .panel, .chart-panel { border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .card { padding: 9px 10px; }
       .card span { display: block; color: #57606a; font-size: 11px; font-weight: 750; }
       .card strong { display: block; margin-top: 4px; font-size: 23px; line-height: 1; }
       .versions { display: grid; grid-template-columns: repeat(2, minmax(520px, 1fr)); gap: 12px; }
       .panel, .chart-panel { min-width: 0; padding: 10px; }
-      .mini-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin: 9px 0; }
+      .mini-kpis { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; margin: 9px 0; }
       .mini-kpis div { padding: 8px; border: 1px solid #d8dee4; border-radius: 6px; background: #f6f8fa; }
       .mini-kpis span { color: #57606a; font-size: 10px; font-weight: 750; }
       .mini-kpis strong { display: block; margin-top: 3px; font-size: 17px; }
@@ -86,9 +86,19 @@
       .tc-layout { display: grid; grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.4fr); gap: 10px; margin-top: 10px; }
       .tc-panel { min-width: 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .tc-table td:first-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+      .project-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
+      .project-toolbar h2 { margin-bottom: 3px; font-size: 14px; }
+      .project-toolbar select { min-width: min(100%, 340px); height: 34px; padding: 0 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #24292f; font: inherit; font-weight: 650; }
+      .project-layout { display: grid; grid-template-columns: minmax(420px, 0.92fr) minmax(520px, 1.08fr); gap: 10px; }
+      .project-panel { min-width: 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
+      .project-table th, .project-table td { padding: 7px 8px; }
+      .project-table tbody tr:last-child td { border-bottom: 0; font-weight: 800; }
+      .rate-up { color: #1a7f37; }
+      .rate-down { color: #d1242f; }
+      .project-chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
       @media (max-width: 820px) {
-        .topbar, .top-actions { display: grid; justify-items: start; }
-        .versions, .charts, .tc-layout { grid-template-columns: 1fr; }
+        .topbar, .top-actions, .project-toolbar { display: grid; justify-items: start; }
+        .versions, .charts, .tc-layout, .project-layout, .project-chart-grid { grid-template-columns: 1fr; }
         .severity-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         .summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         .tabs { flex-wrap: wrap; }
@@ -109,6 +119,7 @@
         <div class="top-actions">
           <nav class="tabs" aria-label="dashboard tabs">
             <button class="tab active" type="button" data-tab="defects">결함 현황</button>
+            <button class="tab" type="button" data-tab="projectProgress">프로젝트별 진행 현황</button>
             <button class="tab" type="button" data-tab="testcases">테스트케이스</button>
           </nav>
           <button id="admin-open" class="action-link" type="button" hidden>관리자 동기화</button>
@@ -120,6 +131,26 @@
         <section id="summary" class="summary"></section>
         <section id="versions" class="versions"></section>
         <section id="charts" class="charts"></section>
+      </section>
+      <section id="project-progress-pane" class="tab-pane" hidden>
+        <section class="project-toolbar">
+          <div>
+            <h2>프로젝트별 진행 현황</h2>
+            <p class="panel-meta">선택한 프로젝트의 심각도별 미처리, 개발 완료, 완료율과 일자별 등록/수정 추이를 표시합니다.</p>
+          </div>
+          <select id="project-select" aria-label="프로젝트 선택"></select>
+        </section>
+        <section id="project-progress-summary" class="summary"></section>
+        <section class="project-layout">
+          <article class="project-panel">
+            <div class="chart-head"><h2>개발 현황</h2><span id="project-progress-meta"></span></div>
+            <div class="version-table-wrap" id="project-progress-table"></div>
+          </article>
+          <article class="project-panel">
+            <div class="chart-head"><h2>일자별 그래프</h2><span>결함 등록 기준 / 수정 일자 기준</span></div>
+            <div id="project-progress-charts" class="project-chart-grid"></div>
+          </article>
+        </section>
       </section>
       <section id="testcase-pane" class="tab-pane" hidden>
         <section id="tc-summary" class="summary"></section>
@@ -149,6 +180,12 @@
       const stamp = document.querySelector("#stamp");
       const tabButtons = Array.from(document.querySelectorAll(".tab"));
       const defectPane = document.querySelector("#defect-pane");
+      const projectProgressPane = document.querySelector("#project-progress-pane");
+      const projectSelect = document.querySelector("#project-select");
+      const projectProgressSummary = document.querySelector("#project-progress-summary");
+      const projectProgressMeta = document.querySelector("#project-progress-meta");
+      const projectProgressTable = document.querySelector("#project-progress-table");
+      const projectProgressCharts = document.querySelector("#project-progress-charts");
       const testcasePane = document.querySelector("#testcase-pane");
       const tcSummary = document.querySelector("#tc-summary");
       const tcDetails = document.querySelector("#tc-details");
@@ -163,6 +200,7 @@
       const adminVisible = new URLSearchParams(window.location.search).get("admin") === "1" || localStorage.getItem("hanpassEmbedAdmin") === "1";
       adminOpen.hidden = !adminVisible;
       let tcLoaded = false;
+      let projectProgressLoaded = false;
 
       function render() {
         const groups = DATA.groups || [];
@@ -172,6 +210,7 @@
         const unresolved = latestRows.reduce((sum, row) => sum + row.unresolved_count, 0);
         const progress = latestRows.reduce((sum, row) => sum + row.in_progress_count, 0);
         const qaVerified = latestRows.reduce((sum, row) => sum + (row.qa_verified_count || 0), 0);
+        const reopened = groups.reduce((sum, group) => sum + reopenedCount(group), 0);
         const resolved = latestRows.reduce((sum, row) => sum + row.resolved_count, 0);
         stamp.textContent = `Generated ${formatDateTime(DATA.generatedAt)}`;
         summary.innerHTML = [
@@ -180,6 +219,7 @@
           ["미처리", unresolved],
           ["처리중", progress],
           ["QA 확인 완료", qaVerified],
+          ["Reopen", reopened],
           ["완료", resolved],
         ].map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
         versions.innerHTML = groups.map(renderGroup).join("") + renderSeverityDetails(groups);
@@ -251,8 +291,168 @@
       function setTab(tab) {
         tabButtons.forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
         defectPane.hidden = tab !== "defects";
+        projectProgressPane.hidden = tab !== "projectProgress";
         testcasePane.hidden = tab !== "testcases";
+        if (tab === "projectProgress") loadProjectProgress();
         if (tab === "testcases") loadTestCases();
+      }
+
+      function loadProjectProgress() {
+        if (!projectProgressLoaded) {
+          const groups = DATA.groups || [];
+          projectSelect.innerHTML = groups.map((group, index) => `<option value="${index}">${escapeHtml(group.version)}</option>`).join("");
+          projectSelect.addEventListener("change", renderProjectProgress);
+          projectProgressLoaded = true;
+        }
+        renderProjectProgress();
+      }
+
+      function currentProjectGroup() {
+        const groups = DATA.groups || [];
+        const index = Number(projectSelect.value || 0);
+        return groups[index] || groups[0] || null;
+      }
+
+      function renderProjectProgress() {
+        const group = currentProjectGroup();
+        if (!group) {
+          projectProgressSummary.innerHTML = "";
+          projectProgressMeta.textContent = "";
+          projectProgressTable.innerHTML = `<p class="empty">프로젝트 데이터가 없습니다.</p>`;
+          projectProgressCharts.innerHTML = "";
+          return;
+        }
+
+        const items = group.items || [];
+        const latest = (group.rows || [])[group.rows.length - 1] || {};
+        const previous = (group.rows || [])[Math.max(0, (group.rows || []).length - 2)] || null;
+        const latestDate = latest.snapshot_date || "";
+        const previousDate = previous && previous.snapshot_date !== latestDate ? previous.snapshot_date : "";
+        const rows = projectSeverityRows(items, previousDate);
+        const totals = rows.find((row) => row.severity === "합계") || { open: 0, devDone: 0, total: 0, rate: 0, previousRate: 0 };
+        projectProgressMeta.textContent = `${groupLabel(group.version)} · 최신 Snapshot ${latestDate ? formatDate(latestDate) : "-"}`;
+        projectProgressSummary.innerHTML = [
+          ["모수", totals.total],
+          ["미처리", totals.open],
+          ["개발 완료", totals.devDone],
+          ["개발 완료 비율", `${Number(totals.rate || 0).toFixed(1)}%`],
+        ].map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
+        projectProgressTable.innerHTML = `
+          <table class="project-table">
+            <thead><tr><th>심각도</th><th>미처리(등록+배정+처리중)</th><th>개발 완료</th><th>모수</th><th>개발 완료 비율</th></tr></thead>
+            <tbody>${rows.map((row) => {
+              const delta = Number(row.rate || 0) - Number(row.previousRate || 0);
+              const deltaClass = delta > 0 ? "rate-up" : delta < 0 ? "rate-down" : "";
+              return `<tr>
+                <td>${escapeHtml(row.severity)}</td>
+                <td>${row.open}</td>
+                <td>${row.devDone}</td>
+                <td>${row.total}</td>
+                <td><span class="${deltaClass}">${Number(row.rate || 0).toFixed(1)}%</span> <span class="panel-meta">(이전 ${Number(row.previousRate || 0).toFixed(1)}%)</span></td>
+              </tr>`;
+            }).join("")}</tbody>
+          </table>`;
+
+        const daily = projectDailyActivity(items);
+        projectProgressCharts.innerHTML = daily.length
+          ? `
+            <div>
+              <div class="chart-box">${barChart(daily, "registered", "#1f6feb", "결함 등록")}</div>
+              ${legend([["#1f6feb", "결함 등록 기준"]])}
+            </div>
+            <div>
+              <div class="chart-box">${barChart(daily, "fixed", "#1a7f37", "수정 일자")}</div>
+              ${legend([["#1a7f37", "수정 일자 기준"]])}
+            </div>`
+          : `<p class="empty">일자별 그래프를 표시할 날짜 데이터가 없습니다.</p>`;
+      }
+
+      function projectSeverityRows(items, previousDate) {
+        const severities = ["Critical", "Major", "Minor"];
+        const rows = severities.map((severity) => projectSeverityRow(severity, items, previousDate));
+        const total = rows.reduce((acc, row) => ({
+          severity: "합계",
+          open: acc.open + row.open,
+          devDone: acc.devDone + row.devDone,
+          total: acc.total + row.total,
+          previousOpen: acc.previousOpen + row.previousOpen,
+          previousDevDone: acc.previousDevDone + row.previousDevDone,
+          previousTotal: acc.previousTotal + row.previousTotal,
+        }), { severity: "합계", open: 0, devDone: 0, total: 0, previousOpen: 0, previousDevDone: 0, previousTotal: 0 });
+        total.rate = total.total ? (total.devDone / total.total) * 100 : 0;
+        total.previousRate = total.previousTotal ? (total.previousDevDone / total.previousTotal) * 100 : 0;
+        return [...rows, total];
+      }
+
+      function projectSeverityRow(severity, items, previousDate) {
+        const filtered = items.filter((item) => normalizeSeverityName(item.severity) === severity);
+        const open = filtered.filter((item) => isOpenDevelopmentStatus(item)).length;
+        const devDone = filtered.filter((item) => isDevelopmentDoneStatus(item)).length;
+        const total = open + devDone;
+        const previousItems = previousDate ? filtered.filter((item) => itemCreatedDate(item) <= previousDate) : [];
+        const previousOpen = previousItems.filter((item) => isOpenDevelopmentStatus(item, previousDate)).length;
+        const previousDevDone = previousItems.filter((item) => isDevelopmentDoneStatus(item, previousDate)).length;
+        const previousTotal = previousOpen + previousDevDone;
+        return {
+          severity,
+          open,
+          devDone,
+          total,
+          previousOpen,
+          previousDevDone,
+          previousTotal,
+          rate: total ? (devDone / total) * 100 : 0,
+          previousRate: previousTotal ? (previousDevDone / previousTotal) * 100 : 0,
+        };
+      }
+
+      function normalizeSeverityName(value) {
+        const lower = String(value || "").trim().toLowerCase();
+        if (lower.includes("critical")) return "Critical";
+        if (lower.includes("major")) return "Major";
+        if (lower.includes("minor")) return "Minor";
+        return String(value || "").trim() || "미지정";
+      }
+
+      function compactStatus(value) {
+        return String(value || "").replace(/\s+/g, "").toLowerCase();
+      }
+
+      function itemFixedDate(item) {
+        const status = compactStatus(item.status);
+        const done = status.includes("개발완료") || status.includes("devdone") || status.includes("수정완료") || status.includes("fixed") || status.includes("resolved") || status.includes("qa검증") || status.includes("qa확인") || status.includes("완료") || status.includes("done") || item.status_group === "resolved" || item.status_group === "qa_verified";
+        return item.resolved_first_seen_date || item.qa_verified_first_seen_date || (done ? itemCreatedDate({ notion_created_at: item.notion_last_edited_at }) : "");
+      }
+
+      function isDevelopmentDoneStatus(item, cutoffDate = "") {
+        const status = compactStatus(item.status);
+        const done = status.includes("개발완료") || status.includes("devdone") || status.includes("수정완료") || status.includes("fixed") || status.includes("resolved") || status.includes("qa검증") || status.includes("qa확인") || status.includes("완료") || status.includes("done") || item.status_group === "resolved" || item.status_group === "qa_verified";
+        if (!done) return false;
+        const fixedDate = itemFixedDate({ ...item, status: item.status });
+        return !cutoffDate || !fixedDate || fixedDate <= cutoffDate;
+      }
+
+      function isOpenDevelopmentStatus(item, cutoffDate = "") {
+        const status = compactStatus(item.status);
+        const open = status.includes("등록") || status.includes("registered") || status.includes("배정") || status.includes("assigned") || status.includes("처리중") || status.includes("inprogress") || item.status_group === "unresolved" || item.status_group === "in_progress";
+        return open && !isDevelopmentDoneStatus(item, cutoffDate);
+      }
+
+      function projectDailyActivity(items) {
+        const createdCounts = new Map();
+        const fixedCounts = new Map();
+        items.forEach((item) => {
+          const created = itemCreatedDate(item);
+          const fixed = itemFixedDate(item);
+          if (created) createdCounts.set(created, (createdCounts.get(created) || 0) + 1);
+          if (fixed) fixedCounts.set(fixed, (fixedCounts.get(fixed) || 0) + 1);
+        });
+        const dates = Array.from(new Set([...createdCounts.keys(), ...fixedCounts.keys()])).sort().slice(-30);
+        return dates.map((date) => ({
+          snapshot_date: date,
+          registered: createdCounts.get(date) || 0,
+          fixed: fixedCounts.get(date) || 0,
+        }));
       }
 
       function renderGroup(group) {
@@ -269,6 +469,7 @@
             <td>${row.unresolved_count}</td>
             <td>${row.in_progress_count}</td>
             <td>${row.qa_verified_count || 0}</td>
+            <td>${row.reopened_count || 0}</td>
             <td>${row.resolved_count}</td>
             <td>${Number(row.resolution_rate).toFixed(1)}%</td>
           </tr>`).join("");
@@ -282,11 +483,12 @@
               <div><span>미처리</span><strong>${latest.unresolved_count}</strong></div>
               <div><span>처리중</span><strong>${latest.in_progress_count}</strong></div>
               <div><span>QA 확인 완료</span><strong>${latest.qa_verified_count || 0}</strong></div>
+              <div><span>Reopen</span><strong>${reopenedCount(group)}</strong></div>
               <div><span>완료</span><strong>${latest.resolved_count}</strong></div>
             </div>
             <div class="version-table-wrap">
               <table>
-                <thead><tr><th>날짜</th><th>전체</th><th>신규</th><th>미처리</th><th>처리중</th><th>QA 확인 완료</th><th>완료</th><th>처리율</th></tr></thead>
+                <thead><tr><th>날짜</th><th>전체</th><th>신규</th><th>미처리</th><th>처리중</th><th>QA 확인 완료</th><th>Reopen</th><th>완료</th><th>처리율</th></tr></thead>
                 <tbody>${body}</tbody>
               </table>
             </div>
@@ -303,6 +505,7 @@
             unresolved_count: 0,
             in_progress_count: 0,
             qa_verified_count: 0,
+            reopened_count: 0,
             resolved_count: 0,
             completed_today_count: 0,
           };
@@ -311,6 +514,7 @@
           current.unresolved_count += row.unresolved_count;
           current.in_progress_count += row.in_progress_count;
           current.qa_verified_count += row.qa_verified_count || 0;
+          current.reopened_count += row.reopened_count || 0;
           current.resolved_count += row.resolved_count;
           current.completed_today_count += row.completed_today_count;
           byDate.set(row.snapshot_date, current);
@@ -384,6 +588,7 @@
             row.unresolved_count !== previous.unresolved_count ||
             row.in_progress_count !== previous.in_progress_count ||
             (row.qa_verified_count || 0) !== (previous.qa_verified_count || 0) ||
+            (row.reopened_count || 0) !== (previous.reopened_count || 0) ||
             row.resolved_count !== previous.resolved_count;
         });
       }
@@ -405,6 +610,7 @@
           const inProgress = cumulative.filter((item) => item.status_group === "in_progress").length;
           const qaVerifiedCumulative = cumulative.filter((item) => item.status_group === "qa_verified").length;
           const qaVerifiedToday = datedItems.filter((item) => item.qa_verified_first_seen_date === date).length;
+          const reopenedToday = datedItems.filter((item) => isReopenedStatus(item.status) && item.createdDate === date).length;
           const resolvedToday = datedItems.filter((item) => item.resolved_first_seen_date === date).length;
           const total = cumulative.length;
           return {
@@ -415,13 +621,14 @@
             unresolved_count: total - resolvedCumulative - inProgress - qaVerifiedCumulative,
             in_progress_count: inProgress,
             qa_verified_count: qaVerifiedToday,
+            reopened_count: reopenedToday,
             resolved_count: resolvedToday,
             completed_today_count: resolvedToday,
             net_change_count: createdToday.length - resolvedToday,
             resolution_rate: total ? ((resolvedCumulative + qaVerifiedCumulative) / total) * 100 : 0,
           };
         }).filter((row, index, rows) => {
-          if (row.new_count || row.qa_verified_count || row.resolved_count) return true;
+          if (row.new_count || row.qa_verified_count || row.reopened_count || row.resolved_count) return true;
           if (index === rows.length - 1) return true;
           return false;
         });
@@ -435,6 +642,17 @@
         const month = String(date.getMonth() + 1).padStart(2, "0");
         const day = String(date.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
+      }
+
+      function isReopenedStatus(status) {
+        return String(status || "").trim() === "결함 재발생 (Reopen)";
+      }
+
+      function reopenedCount(group) {
+        const items = group.items || [];
+        if (items.length) return items.filter((item) => isReopenedStatus(item.status)).length;
+        const latest = (group.rows || [])[group.rows.length - 1] || {};
+        return Number(latest.reopened_count) || 0;
       }
 
       function renderSeverityDetails(groups) {
