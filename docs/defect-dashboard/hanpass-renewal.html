@@ -121,12 +121,12 @@
         </div>
         <div class="top-actions">
           <label class="top-project-select" for="project-select">
-            <span>프로젝트</span>
-            <select id="project-select" aria-label="프로젝트 선택"></select>
+            <span>타겟버전</span>
+            <select id="project-select" aria-label="타겟버전 선택"></select>
           </label>
           <nav class="tabs" aria-label="dashboard tabs">
             <button class="tab active" type="button" data-tab="defects">결함 현황</button>
-            <button class="tab" type="button" data-tab="projectProgress">프로젝트별 진행 현황</button>
+            <button class="tab" type="button" data-tab="projectProgress">타겟버전 써머리</button>
             <button class="tab" type="button" data-tab="testcases">테스트케이스</button>
           </nav>
           <button id="admin-open" class="action-link" type="button" hidden>관리자 동기화</button>
@@ -142,8 +142,8 @@
       <section id="project-progress-pane" class="tab-pane" hidden>
         <section class="project-toolbar">
           <div>
-            <h2>프로젝트별 진행 현황</h2>
-            <p class="panel-meta">선택한 프로젝트의 심각도별 미처리, 개발 완료, 완료율과 일자별 등록/수정 추이를 표시합니다.</p>
+            <h2>타겟버전 써머리</h2>
+            <p class="panel-meta">상단 셀렉트 박스에서 선택한 타겟버전의 심각도별 미처리, 개발 완료, 완료율과 일자별 등록/수정 추이를 표시합니다.</p>
           </div>
         </section>
         <section id="project-progress-summary" class="summary"></section>
@@ -313,7 +313,7 @@
         if (projectProgressLoaded) return;
         const groups = DATA.groups || [];
         projectSelect.innerHTML = [
-          `<option value="">프로젝트 선택</option>`,
+          `<option value="">타겟버전 선택</option>`,
           ...groups.map((group, index) => `<option value="${index}">${escapeHtml(group.version)}</option>`),
         ].join("");
         projectSelect.addEventListener("change", () => {
@@ -338,7 +338,7 @@
         if (!group) {
           projectProgressSummary.innerHTML = "";
           projectProgressMeta.textContent = "";
-          projectProgressTable.innerHTML = `<p class="empty">상단 프로젝트 셀렉트 박스에서 프로젝트를 선택하세요.</p>`;
+          projectProgressTable.innerHTML = `<p class="empty">상단 타겟버전 셀렉트 박스에서 확인할 타겟버전을 선택하세요.</p>`;
           projectProgressCharts.innerHTML = "";
           return;
         }
