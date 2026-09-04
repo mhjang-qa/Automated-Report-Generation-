@@ -75,6 +75,8 @@
       .tabs { display: inline-flex; align-items: center; gap: 4px; }
       .tab { min-height: 30px; padding: 0 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #57606a; font: inherit; font-weight: 750; cursor: pointer; }
       .tab.active { border-color: #1f6feb; background: #1f6feb; color: #fff; }
+      .top-project-select { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #57606a; font-size: 11px; font-weight: 750; }
+      .top-project-select select { width: 260px; max-width: 32vw; height: 24px; border: 0; border-left: 1px solid #d8dee4; padding: 0 0 0 8px; background: #fff; color: #24292f; font: inherit; font-size: 12px; outline: 0; }
       .tab-pane[hidden] { display: none !important; }
       .platform-donuts { display: grid; grid-template-columns: repeat(3, minmax(104px, 1fr)); gap: 8px; }
       .donut-card { display: grid; justify-items: center; gap: 6px; min-width: 0; padding: 10px 8px; border: 1px solid #d8dee4; border-radius: 8px; background: #f6f8fa; }
@@ -88,7 +90,6 @@
       .tc-table td:first-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
       .project-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .project-toolbar h2 { margin-bottom: 3px; font-size: 14px; }
-      .project-toolbar select { min-width: min(100%, 340px); height: 34px; padding: 0 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; color: #24292f; font: inherit; font-weight: 650; }
       .project-layout { display: grid; grid-template-columns: minmax(420px, 0.92fr) minmax(520px, 1.08fr); gap: 10px; }
       .project-panel { min-width: 0; padding: 10px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
       .project-table th, .project-table td { padding: 7px 8px; }
@@ -102,6 +103,8 @@
         .severity-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         .summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
         .tabs { flex-wrap: wrap; }
+        .top-project-select { width: 100%; }
+        .top-project-select select { width: 100%; max-width: none; }
       }
       @media (max-width: 520px) {
         .severity-grid { grid-template-columns: 1fr; }
@@ -117,6 +120,10 @@
           <p class="subtitle">[Hanpass][앱개편][Native]-Dev, [Hanpass][앱개편][Native]-LiveTest, [Hanpass][앱개편][BO], [Hanpass][앱개편][기획] 전용 Notion Embed</p>
         </div>
         <div class="top-actions">
+          <label class="top-project-select" for="project-select">
+            <span>프로젝트</span>
+            <select id="project-select" aria-label="프로젝트 선택"></select>
+          </label>
           <nav class="tabs" aria-label="dashboard tabs">
             <button class="tab active" type="button" data-tab="defects">결함 현황</button>
             <button class="tab" type="button" data-tab="projectProgress">프로젝트별 진행 현황</button>
@@ -138,7 +145,6 @@
             <h2>프로젝트별 진행 현황</h2>
             <p class="panel-meta">선택한 프로젝트의 심각도별 미처리, 개발 완료, 완료율과 일자별 등록/수정 추이를 표시합니다.</p>
           </div>
-          <select id="project-select" aria-label="프로젝트 선택"></select>
         </section>
         <section id="project-progress-summary" class="summary"></section>
         <section class="project-layout">
@@ -224,6 +230,7 @@
         ].map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
         versions.innerHTML = groups.map(renderGroup).join("") + renderSeverityDetails(groups);
         charts.innerHTML = renderCharts(groups);
+        initProjectSelect();
       }
 
       async function loadTestCases() {
@@ -298,17 +305,30 @@
       }
 
       function loadProjectProgress() {
-        if (!projectProgressLoaded) {
-          const groups = DATA.groups || [];
-          projectSelect.innerHTML = groups.map((group, index) => `<option value="${index}">${escapeHtml(group.version)}</option>`).join("");
-          projectSelect.addEventListener("change", renderProjectProgress);
-          projectProgressLoaded = true;
-        }
+        initProjectSelect();
         renderProjectProgress();
+      }
+
+      function initProjectSelect() {
+        if (projectProgressLoaded) return;
+        const groups = DATA.groups || [];
+        projectSelect.innerHTML = [
+          `<option value="">프로젝트 선택</option>`,
+          ...groups.map((group, index) => `<option value="${index}">${escapeHtml(group.version)}</option>`),
+        ].join("");
+        projectSelect.addEventListener("change", () => {
+          if (projectSelect.value !== "") {
+            setTab("projectProgress");
+          } else if (!projectProgressPane.hidden) {
+            renderProjectProgress();
+          }
+        });
+        projectProgressLoaded = true;
       }
 
       function currentProjectGroup() {
         const groups = DATA.groups || [];
+        if (projectSelect.value === "") return null;
         const index = Number(projectSelect.value || 0);
         return groups[index] || groups[0] || null;
       }
@@ -318,7 +338,7 @@
         if (!group) {
           projectProgressSummary.innerHTML = "";
           projectProgressMeta.textContent = "";
-          projectProgressTable.innerHTML = `<p class="empty">프로젝트 데이터가 없습니다.</p>`;
+          projectProgressTable.innerHTML = `<p class="empty">상단 프로젝트 셀렉트 박스에서 프로젝트를 선택하세요.</p>`;
           projectProgressCharts.innerHTML = "";
           return;
         }
