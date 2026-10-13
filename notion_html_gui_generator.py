@@ -53,6 +53,13 @@ DEFECT_COLUMN_CANDIDATES = {
     "feature": ("피처", "Feature", "기능", "ATM", "ATM 항목", "ATM항목", "ATM 구분", "ATM구분", "메뉴", "Project", "프로젝트", "Name", "이름", "제목", "Title"),
 }
 ATM_COLUMN_CANDIDATES = ("ATM", "ATM 항목", "ATM항목", "ATM 구분", "ATM구분")
+APP_RENEWAL_TARGET_VERSIONS = (
+    "[Hanpass][앱개편][Native]",
+    "[Hanpass][앱개편][BO]",
+    "[Hanpass][앱개편][기획]",
+)
+APP_RENEWAL_PLANNING_TARGET_VERSION = "[Hanpass][앱개편][기획]"
+APP_RENEWAL_PLANNING_COUNT_LABEL = "앱개편 기획"
 END_STATUS_COLUMN_CANDIDATES = (
     "처리 결과", "종료 결과", "최종 상태", "End Status", "Resolution",
     "상태", "Status", "진행상태", "Progress", "결론", "Result"
@@ -205,6 +212,17 @@ def detect_os_result_columns(row: dict) -> dict:
     if result_column:
         return {"mode": "result_column", "result_column": result_column}
     return {"mode": "unknown"}
+
+
+def _row_has_countable_result(row: dict) -> bool:
+    detected = detect_os_result_columns(row)
+    if detected["mode"] == "os_column":
+        return bool(normalize_result(row.get(detected["result_column"])))
+    if detected["mode"] == "os_result_columns":
+        return any(normalize_result(row.get(column)) for column in detected["columns"].values())
+    if detected["mode"] == "result_column":
+        return bool(normalize_result(row.get(detected["result_column"])))
+    return False
 
 
 def aggregate_results_by_page(test_cases: list) -> dict:
@@ -626,7 +644,7 @@ def _fetch_related_tc_rows(page, depth=2, visited=None):
 
         title = _page_title(related_page)
         row = _page_properties_to_row(related_page)
-        if detect_os_result_columns(row).get("mode") != "unknown":
+        if _row_has_countable_result(row):
             rows.append({"page_name": title, "row": row})
 
         nested_relation_ids = _relation_ids_from_page(related_page)
@@ -639,8 +657,13 @@ def _fetch_related_tc_rows(page, depth=2, visited=None):
         if saw_embedded_database:
             continue
 
-        for child_row in fetch_test_cases_from_page(relation_id, include_page_properties=False):
-            rows.append({"page_name": title, "row": child_row})
+        rows.extend(
+            fetch_test_case_records_from_page(
+                relation_id,
+                page_name=title,
+                include_page_properties=False,
+            )
+        )
 
         if depth > 1:
             rows.extend(_fetch_related_tc_rows(related_page, depth=depth - 1, visited=visited))
@@ -651,7 +674,7 @@ def _embedded_database_tc_rows(page_id, page_name):
     rows = []
     saw_database = False
     try:
-        blocks = _list_block_children(page_id)
+        blocks = list(_iter_block_tree(page_id, max_depth=3, descend_child_pages=False))
     except ValueError as e:
         print("Embedded TC database block read skipped:", page_id, e)
         return rows, saw_database
@@ -674,7 +697,7 @@ def _embedded_database_tc_rows(page_id, page_name):
         try:
             for page in _query_database(database_id):
                 row = _page_properties_to_row(page)
-                if detect_os_result_columns(row).get("mode") != "unknown":
+                if _row_has_countable_result(row):
                     rows.append({"page_name": page_name, "row": row})
         except ValueError as e:
             if "data source 접근 권한" in str(e) or "접근 권한" in str(e):
@@ -724,7 +747,7 @@ def _list_block_children(block_id):
     return _notion_paginated("GET", f"/blocks/{block_id}/children")
 
 
-def _iter_block_tree(block_id, max_depth=5):
+def _iter_block_tree(block_id, max_depth=5, descend_child_pages=True):
     if max_depth < 0:
         return
     try:
@@ -734,8 +757,14 @@ def _iter_block_tree(block_id, max_depth=5):
         return
     for block in children:
         yield block
+        if block.get("type") == "child_page" and not descend_child_pages:
+            continue
         if block.get("has_children"):
-            yield from _iter_block_tree(block["id"], max_depth - 1)
+            yield from _iter_block_tree(
+                block["id"],
+                max_depth - 1,
+                descend_child_pages=descend_child_pages,
+            )
 
 
 def fetch_notion_children(notion_id: str) -> list:
@@ -767,7 +796,7 @@ def fetch_notion_children(notion_id: str) -> list:
 
 def _table_rows_from_blocks(page_id):
     rows = []
-    for block in _iter_block_tree(page_id):
+    for block in _iter_block_tree(page_id, descend_child_pages=False):
         if block.get("type") != "table":
             continue
         table_rows = [b for b in _list_block_children(block["id"]) if b.get("type") == "table_row"]
@@ -792,7 +821,7 @@ def _checklist_rows_from_blocks(page_id):
         "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "quote", "callout",
     }
 
-    for block in _iter_block_tree(page_id):
+    for block in _iter_block_tree(page_id, descend_child_pages=False):
         btype = block.get("type")
         if btype not in text_block_types:
             continue
@@ -824,6 +853,114 @@ def _checklist_rows_from_blocks(page_id):
     return rows
 
 
+def fetch_test_case_records_from_page(
+    page_id: str,
+    page_name: str = "",
+    include_page_properties: bool = True,
+    max_depth: int = 8,
+    visited_pages=None,
+    include_block_rows: bool = True,
+) -> list:
+    """하위 페이지 내 테스트 케이스 데이터를 출처 페이지명과 함께 조회한다."""
+    visited_pages = visited_pages or set()
+    if not page_id or page_id in visited_pages or max_depth < 0:
+        return []
+    visited_pages.add(page_id)
+
+    records = []
+    current_page_name = page_name or "제목 없음"
+    if include_page_properties:
+        try:
+            page = _notion_request("GET", f"/pages/{page_id}")
+            current_page_name = _page_title(page) or current_page_name
+            row = _page_properties_to_row(page)
+            if _row_has_countable_result(row):
+                records.append({"page_name": current_page_name, "row": row})
+        except ValueError as e:
+            print("Page property read skipped:", e)
+
+    for block in _iter_block_tree(page_id, descend_child_pages=False):
+        try:
+            if block.get("type") == "child_database":
+                for page in _query_database(block["id"]):
+                    nested_page_name = _page_title(page) or current_page_name
+                    row = _page_properties_to_row(page)
+                    if _row_has_countable_result(row):
+                        records.append({"page_name": current_page_name, "row": row})
+                    elif _looks_like_tc_leaf_row(row):
+                        continue
+                    else:
+                        records.extend(
+                            fetch_test_case_records_from_page(
+                                page["id"],
+                                page_name=nested_page_name,
+                                include_page_properties=False,
+                                max_depth=max_depth - 1,
+                                visited_pages=visited_pages,
+                                include_block_rows=False,
+                            )
+                        )
+            elif block.get("type") == "child_page":
+                nested_page_name = block.get("child_page", {}).get("title") or current_page_name
+                records.extend(
+                    fetch_test_case_records_from_page(
+                        block["id"],
+                        page_name=nested_page_name,
+                        include_page_properties=True,
+                        max_depth=max_depth - 1,
+                        visited_pages=visited_pages,
+                        include_block_rows=True,
+                    )
+                )
+            elif block.get("type") == "link_to_page":
+                link = block.get("link_to_page", {})
+                if link.get("type") == "database_id" and link.get("database_id"):
+                    for page in _query_database(link["database_id"]):
+                        nested_page_name = _page_title(page) or current_page_name
+                        row = _page_properties_to_row(page)
+                        if _row_has_countable_result(row):
+                            records.append({"page_name": current_page_name, "row": row})
+                        elif _looks_like_tc_leaf_row(row):
+                            continue
+                        else:
+                            records.extend(
+                                fetch_test_case_records_from_page(
+                                    page["id"],
+                                    page_name=nested_page_name,
+                                    include_page_properties=False,
+                                    max_depth=max_depth - 1,
+                                    visited_pages=visited_pages,
+                                    include_block_rows=False,
+                                )
+                            )
+                elif link.get("type") == "page_id" and link.get("page_id"):
+                    records.extend(
+                        fetch_test_case_records_from_page(
+                            link["page_id"],
+                            page_name=current_page_name,
+                            include_page_properties=True,
+                            max_depth=max_depth - 1,
+                            visited_pages=visited_pages,
+                            include_block_rows=True,
+                        )
+                    )
+        except ValueError as e:
+            print("Child database read skipped:", block.get("id"), e)
+
+    if include_block_rows:
+        try:
+            records.extend({"page_name": current_page_name, "row": row} for row in _table_rows_from_blocks(page_id))
+        except ValueError as e:
+            print("Table block read skipped:", e)
+
+        try:
+            records.extend({"page_name": current_page_name, "row": row} for row in _checklist_rows_from_blocks(page_id))
+        except ValueError as e:
+            print("Checklist block read skipped:", e)
+
+    return records
+
+
 def fetch_test_cases_from_page(
     page_id: str,
     include_page_properties: bool = True,
@@ -831,74 +968,17 @@ def fetch_test_cases_from_page(
     visited_pages=None,
     include_block_rows: bool = True,
 ) -> list:
-    """하위 페이지 내 테스트 케이스 데이터를 조회한다."""
-    visited_pages = visited_pages or set()
-    if not page_id or page_id in visited_pages or max_depth < 0:
-        return []
-    visited_pages.add(page_id)
-
+    """하위 페이지 내 테스트 케이스 데이터 행만 조회한다."""
     rows = []
-    if include_page_properties:
-        try:
-            page = _notion_request("GET", f"/pages/{page_id}")
-            row = _page_properties_to_row(page)
-            if detect_os_result_columns(row).get("mode") != "unknown":
-                rows.append(row)
-        except ValueError as e:
-            print("Page property read skipped:", e)
-
-    for block in _iter_block_tree(page_id):
-        try:
-            if block.get("type") == "child_database":
-                for page in _query_database(block["id"]):
-                    row = _page_properties_to_row(page)
-                    if detect_os_result_columns(row).get("mode") != "unknown":
-                        rows.append(row)
-                    elif _looks_like_tc_leaf_row(row):
-                        continue
-                    else:
-                        rows.extend(
-                            fetch_test_cases_from_page(
-                                page["id"],
-                                include_page_properties=False,
-                                max_depth=max_depth - 1,
-                                visited_pages=visited_pages,
-                                include_block_rows=False,
-                            )
-                        )
-            elif block.get("type") == "link_to_page":
-                link = block.get("link_to_page", {})
-                if link.get("type") == "database_id" and link.get("database_id"):
-                    for page in _query_database(link["database_id"]):
-                        row = _page_properties_to_row(page)
-                        if detect_os_result_columns(row).get("mode") != "unknown":
-                            rows.append(row)
-                        elif _looks_like_tc_leaf_row(row):
-                            continue
-                        else:
-                            rows.extend(
-                                fetch_test_cases_from_page(
-                                    page["id"],
-                                    include_page_properties=False,
-                                    max_depth=max_depth - 1,
-                                    visited_pages=visited_pages,
-                                    include_block_rows=False,
-                                )
-                            )
-        except ValueError as e:
-            print("Child database read skipped:", block.get("id"), e)
-
-    if include_block_rows:
-        try:
-            rows.extend(_table_rows_from_blocks(page_id))
-        except ValueError as e:
-            print("Table block read skipped:", e)
-
-        try:
-            rows.extend(_checklist_rows_from_blocks(page_id))
-        except ValueError as e:
-            print("Checklist block read skipped:", e)
-
+    records = fetch_test_case_records_from_page(
+        page_id,
+        include_page_properties=include_page_properties,
+        max_depth=max_depth,
+        visited_pages=visited_pages,
+        include_block_rows=include_block_rows,
+    )
+    for record in records:
+        rows.append(record["row"])
     return rows
 
 
@@ -1036,6 +1116,34 @@ def aggregate_end_defects(defects: list) -> dict:
     return counts
 
 
+def _target_version_values(value: str) -> list:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    return [part.strip() for part in re.split(r"[,/]\s*", text) if part.strip()]
+
+
+def _target_version_sort_key(value):
+    if value in APP_RENEWAL_TARGET_VERSIONS:
+        return (0, APP_RENEWAL_TARGET_VERSIONS.index(value), "")
+    chunks = re.split(r"(\d+)", value)
+    return (1, len(APP_RENEWAL_TARGET_VERSIONS), [int(c) if c.isdigit() else c.lower() for c in chunks])
+
+
+def is_app_renewal_planning_version(target_version: str) -> bool:
+    return str(target_version or "").strip() == APP_RENEWAL_PLANNING_TARGET_VERSION
+
+
+def defects_to_planning_count_lines(defects: list) -> str:
+    return "\n".join(APP_RENEWAL_PLANNING_COUNT_LABEL for _ in defects)
+
+
+def defects_to_fea_lines(defects: list, target_version: str = "") -> str:
+    if is_app_renewal_planning_version(target_version):
+        return defects_to_planning_count_lines(defects)
+    return defects_to_feature_lines(defects)
+
+
 def extract_target_versions(defects: list) -> list:
     """결함 데이터에서 목표버전 목록을 추출한다."""
     versions = set()
@@ -1048,17 +1156,16 @@ def extract_target_versions(defects: list) -> list:
             continue
         value = str(row.get(version_column, "")).strip()
         if value:
-            for part in re.split(r"[,/]\s*", value):
-                if part.strip():
-                    versions.add(part.strip())
+            for part in _target_version_values(value):
+                versions.add(part)
     if missing_count and not versions:
         raise ValueError("목표버전 컬럼을 찾지 못했습니다.")
 
-    def version_key(value):
-        chunks = re.split(r"(\d+)", value)
-        return [int(c) if c.isdigit() else c.lower() for c in chunks]
+    app_renewal_versions = [version for version in APP_RENEWAL_TARGET_VERSIONS if version in versions]
+    if app_renewal_versions:
+        return app_renewal_versions
 
-    return sorted(versions, key=version_key)
+    return sorted(versions, key=_target_version_sort_key)
 
 
 def filter_defects_by_target_version(defects: list, target_version: str) -> list:
@@ -1073,7 +1180,7 @@ def filter_defects_by_target_version(defects: list, target_version: str) -> list
         version_column = (defect.get("columns") or {}).get("version") or _find_column(row, DEFECT_COLUMN_CANDIDATES["version"])
         if not version_column:
             continue
-        values = [part.strip() for part in re.split(r"[,/]\s*", str(row.get(version_column, ""))) if part.strip()]
+        values = _target_version_values(row.get(version_column, ""))
         if target in values or str(row.get(version_column, "")).strip() == target:
             filtered.append(defect)
     return filtered
@@ -1932,8 +2039,11 @@ class NotionHtmlGeneratorGUI:
         if not features:
             raise ValueError("ATM 기준으로 집계할 데이터가 없습니다.")
 
-        self.set_status(f"ATM 구분 {len(features)}개 집계 완료")
-        return defects_to_feature_lines(filtered)
+        if is_app_renewal_planning_version(target_version):
+            self.set_status(f"앱개편 기획 {len(filtered)}건 카운트 집계 완료")
+        else:
+            self.set_status(f"ATM 구분 {len(features)}개 집계 완료")
+        return defects_to_fea_lines(filtered, target_version)
 
     def build_tc_aggregated_from_notion(self, notion_url):
         parsed = parse_notion_link(notion_url)
@@ -1960,7 +2070,7 @@ class NotionHtmlGeneratorGUI:
                     title = _page_title(page)
                     row = _page_properties_to_row(page)
                     expected_tc_total += _tc_count_from_row(row)
-                    if detect_os_result_columns(row).get("mode") != "unknown":
+                    if _row_has_countable_result(row):
                         direct_cases.append({"page_name": title, "row": row})
                     else:
                         page_children.append({"id": page["id"], "title": title, "page": page, "source": "database"})
@@ -1988,15 +2098,20 @@ class NotionHtmlGeneratorGUI:
         for index, child in enumerate(children, start=1):
             title = child.get("title") or "제목 없음"
             self.set_status(f"테스트 케이스 수집 중 ({index}/{len(children)}): {title}")
-            rows = []
+            cases = []
             page_row = child.get("page")
             if page_row:
                 row = _page_properties_to_row(page_row)
-                if detect_os_result_columns(row).get("mode") != "unknown":
-                    rows.append(row)
-            rows.extend(fetch_test_cases_from_page(child["id"], include_page_properties=not bool(page_row)))
-            for row in rows:
-                all_cases.append({"page_name": title, "row": row})
+                if _row_has_countable_result(row):
+                    cases.append({"page_name": title, "row": row})
+            cases.extend(
+                fetch_test_case_records_from_page(
+                    child["id"],
+                    page_name=title,
+                    include_page_properties=not bool(page_row),
+                )
+            )
+            all_cases.extend(cases)
 
         all_cases.extend(direct_cases_from_database)
 

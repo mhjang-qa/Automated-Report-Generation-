@@ -209,8 +209,11 @@ def build_fea_lines_from_notion(request: GenerateRequest, adapter: LegacyReportA
     features = legacy.aggregate_features_from_defects(filtered)
     if not features:
         raise ValueError("ATM 기준으로 집계할 데이터가 없습니다.")
-    adapter.set_status(f"ATM 구분 {len(features)}개 집계 완료")
-    return legacy.defects_to_feature_lines(filtered)
+    if legacy.is_app_renewal_planning_version(request.target_version):
+        adapter.set_status(f"앱개편 기획 {len(filtered)}건 카운트 집계 완료")
+    else:
+        adapter.set_status(f"ATM 구분 {len(features)}개 집계 완료")
+    return legacy.defects_to_fea_lines(filtered, request.target_version)
 
 
 def generate_report(request: GenerateRequest, status_callback: StatusCallback = None) -> GenerateResult:
