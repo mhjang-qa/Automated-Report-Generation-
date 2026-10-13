@@ -818,7 +818,8 @@ async function generateEmbedHtml() {
   showWorkProgress("임베드 HTML 생성 중", "Notion 데이터 조회와 리포트 HTML 생성을 진행 중입니다.");
   try {
     updateWorkProgress("Notion 링크와 입력값을 기준으로 데이터를 집계하는 중입니다.");
-    const data = await apiPost("/api/embed-html", embedPayload());
+    const job = await apiPost("/api/embed-jobs", embedPayload());
+    const data = await waitForEmbedJob(job.jobId);
     updateWorkProgress("HTML 미리보기를 렌더링하는 중입니다.");
     state.embedHtml = data.html || "";
     state.embedFilename = data.filename || el.embedFilename.value.trim() || "report.html";
@@ -834,6 +835,33 @@ async function generateEmbedHtml() {
     hideWorkProgress();
     syncButtons();
   }
+}
+
+async function waitForEmbedJob(jobId) {
+  const startedAt = Date.now();
+  let failures = 0;
+  while (Date.now() - startedAt < 30 * 60 * 1000) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    let res;
+    try {
+      res = await fetch(`/api/embed-jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
+    } catch (error) {
+      if (++failures >= 8) throw new Error("서버 연결이 끊겼습니다. 다시 생성해 주세요.");
+      continue;
+    }
+    if (res.status >= 500) {
+      if (++failures >= 8) throw new Error("서버 응답이 지연되고 있습니다. 다시 생성해 주세요.");
+      continue;
+    }
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.message || "생성 상태를 확인하지 못했습니다.");
+    failures = 0;
+    if (data.status === "completed") return data.result;
+    if (data.status === "failed") throw new Error(data.message || "HTML 생성에 실패했습니다.");
+    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    updateWorkProgress(`${data.message || "Notion 데이터를 집계하는 중입니다."} (${elapsed}초)`);
+  }
+  throw new Error("생성 시간이 30분을 초과했습니다. 잠시 후 다시 시도해 주세요.");
 }
 
 async function loadEmbedTargetVersions() {

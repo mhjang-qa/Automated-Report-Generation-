@@ -53,6 +53,10 @@ GEMINI_LIMIT_REASON = ""
 GEMINI_LIMIT_DETAILS = {}
 FIGMA_RENDER_CACHE_LOCK = threading.Lock()
 FIGMA_RENDER_CACHE = {}
+EMBED_JOBS_LOCK = threading.Lock()
+EMBED_JOBS = {}
+EMBED_JOB_TTL_SECONDS = 3600
+EMBED_JOB_MAX_ACTIVE = 2
 
 
 class UserFacingError(Exception):
@@ -1407,7 +1411,7 @@ def _embed_int(payload, key, default=0):
         raise UserFacingError(f"{key} 값은 숫자여야 합니다.", 400)
 
 
-def generate_embed_html(payload):
+def generate_embed_html(payload, status_callback=None):
     request = GenerateRequest(
         template_type=payload.get("templateType") or payload.get("template_type") or "",
         title=payload.get("title") or "",
@@ -1430,7 +1434,7 @@ def generate_embed_html(payload):
         tc_ios_na=_embed_int(payload, "tcIosNa", 147),
     )
     try:
-        result = generate_report(request)
+        result = generate_report(request, status_callback=status_callback)
     except ValueError as exc:
         raise UserFacingError(str(exc), 400) from exc
     return {
@@ -1441,6 +1445,53 @@ def generate_embed_html(payload):
         "filename": result.filename,
         "message": result.message,
     }
+
+
+def start_embed_job(payload):
+    key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    with EMBED_JOBS_LOCK:
+        for job_id, job in list(EMBED_JOBS.items()):
+            if job["status"] != "running" and now - job["updatedAt"] > EMBED_JOB_TTL_SECONDS:
+                del EMBED_JOBS[job_id]
+        active = [job for job in EMBED_JOBS.values() if job["status"] == "running"]
+        for job in active:
+            if job["key"] == key:
+                return {"jobId": job["jobId"], "status": "running"}
+        if len(active) >= EMBED_JOB_MAX_ACTIVE:
+            raise UserFacingError("다른 리포트를 생성 중입니다. 잠시 후 다시 시도해 주세요.", 429)
+        if len(EMBED_JOBS) >= 30:
+            oldest = min((job for job in EMBED_JOBS.values() if job["status"] != "running"), key=lambda job: job["updatedAt"])
+            del EMBED_JOBS[oldest["jobId"]]
+        job_id = uuid.uuid4().hex
+        EMBED_JOBS[job_id] = {"jobId": job_id, "key": key, "status": "running", "message": "Notion 데이터를 조회하는 중입니다.", "updatedAt": now}
+    threading.Thread(target=run_embed_job, args=(job_id, dict(payload)), daemon=True).start()
+    return {"jobId": job_id, "status": "running"}
+
+
+def run_embed_job(job_id, payload):
+    def update_status(message):
+        with EMBED_JOBS_LOCK:
+            EMBED_JOBS[job_id].update(message=message, updatedAt=time.monotonic())
+
+    try:
+        result = generate_embed_html(payload, status_callback=update_status)
+        outcome = {"status": "completed", "result": result}
+    except UserFacingError as exc:
+        outcome = {"status": "failed", "message": exc.message, "errorStatus": exc.status}
+    except Exception:
+        traceback.print_exc()
+        outcome = {"status": "failed", "message": "리포트 생성 중 오류가 발생했습니다. 다시 시도해 주세요.", "errorStatus": 500}
+    with EMBED_JOBS_LOCK:
+        EMBED_JOBS[job_id].update(outcome, updatedAt=time.monotonic())
+
+
+def get_embed_job(job_id):
+    with EMBED_JOBS_LOCK:
+        job = EMBED_JOBS.get(job_id)
+        if not job or time.monotonic() - job["updatedAt"] > EMBED_JOB_TTL_SECONDS:
+            raise UserFacingError("생성 작업이 만료되었거나 서버가 재시작되었습니다. 다시 생성해 주세요.", 404)
+        return {key: value for key, value in job.items() if key not in {"key", "updatedAt"}}
 
 
 def embed_target_versions(payload):
@@ -1802,6 +1853,13 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/embed-jobs/"):
+            try:
+                result = get_embed_job(path.removeprefix("/api/embed-jobs/"))
+                json_response(self, 200, {"ok": True, **result})
+            except UserFacingError as exc:
+                json_response(self, exc.status, {"ok": False, "message": exc.message})
+            return
         if path == "/api/health":
             json_response(self, 200, {"ok": True, "status": "running", "ready": True})
             return
@@ -1919,6 +1977,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
             elif self.path == "/api/embed-html":
                 result = generate_embed_html(payload)
+            elif self.path == "/api/embed-jobs":
+                result = start_embed_job(payload)
             elif self.path == "/api/embed-target-versions":
                 result = embed_target_versions(payload)
             elif self.path == "/api/pixel/figma-parse":
