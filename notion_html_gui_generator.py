@@ -947,7 +947,7 @@ def fetch_test_case_records_from_page(
         except ValueError as e:
             print("Child database read skipped:", block.get("id"), e)
 
-    if include_block_rows:
+    if include_block_rows and not records:
         try:
             records.extend({"page_name": current_page_name, "row": row} for row in _table_rows_from_blocks(page_id))
         except ValueError as e:
