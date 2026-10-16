@@ -291,6 +291,10 @@ function switchTab(tabName) {
   const isEmbed = tabName === "embed";
   const isPixel = tabName === "pixel";
   const isLocalization = tabName === "localization";
+  const isDefectSearch = tabName === "defectSearch";
+  document.querySelector("#defectSearchTab").classList.toggle("active", isDefectSearch);
+  document.querySelector("#defectSearchView").classList.toggle("hidden", !isDefectSearch);
+  window.DefectSearch.setActive(isDefectSearch);
   const isDefectDashboard = tabName === "defectDashboard";
   el.ticketTab.classList.toggle("active", isTicket);
   el.embedTab.classList.toggle("active", isEmbed);
@@ -314,6 +318,10 @@ function switchTab(tabName) {
     el.phaseBadge.textContent = "다국어 검증";
     el.phaseBadge.className = "phase";
     loadLocalizationApp();
+  } else if (isDefectSearch) {
+    el.phaseBadge.textContent = "결함 검색";
+    el.phaseBadge.className = "phase";
+    document.querySelector("#defectQuery").focus();
   } else if (isDefectDashboard) {
     el.phaseBadge.textContent = "결함 대시보드";
     el.phaseBadge.className = "phase";
@@ -1320,6 +1328,7 @@ el.generateTcBtn.addEventListener("click", generateTc);
 el.uploadTcBtn.addEventListener("click", uploadTc);
 el.copySummaryBtn.addEventListener("click", () => copyText(state.summary, "요약 결과"));
 el.copyTcBtn.addEventListener("click", () => copyText(state.tcMarkdown, "TC 결과"));
+document.querySelector("#defectSearchTab").addEventListener("click", () => switchTab("defectSearch"));
 el.ticketTab.addEventListener("click", () => switchTab("ticket"));
 el.embedTab.addEventListener("click", () => switchTab("embed"));
 el.pixelTab.addEventListener("click", () => switchTab("pixel"));

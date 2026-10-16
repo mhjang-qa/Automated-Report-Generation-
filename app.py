@@ -5,6 +5,8 @@ import json
 import os
 import re
 import hashlib
+import secrets
+from http.cookies import SimpleCookie
 import socket
 import sys
 import threading
@@ -84,9 +86,11 @@ def load_env():
 load_env()
 
 
-def json_response(handler, status, payload):
+def json_response(handler, status, payload, extra_headers=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
+    for key, value in (extra_headers or {}).items():
+        handler.send_header(key, value)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Cache-Control", "no-store")
     handler.send_header("Access-Control-Allow-Origin", "*")
@@ -1813,6 +1817,48 @@ def is_local_request(handler):
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
+SEARCH_SERVICE = None
+SEARCH_SERVICE_LOCK = threading.Lock()
+SEARCH_SESSIONS = {}
+SEARCH_SESSIONS_LOCK = threading.Lock()
+
+
+def get_defect_search():
+    global SEARCH_SERVICE
+    with SEARCH_SERVICE_LOCK:
+        if SEARCH_SERVICE is None:
+            from search.search_service import SearchService
+            SEARCH_SERVICE = SearchService()
+        return SEARCH_SERVICE
+
+
+def search_session_cookie():
+    session = secrets.token_urlsafe(32)
+    with SEARCH_SESSIONS_LOCK:
+        now = time.time()
+        for key in list(SEARCH_SESSIONS):
+            if SEARCH_SESSIONS[key] < now:
+                del SEARCH_SESSIONS[key]
+        SEARCH_SESSIONS[session] = now + 43200
+    secure = "; Secure" if os.environ.get("RENDER") else ""
+    return f"qa_search_session={session}; Path=/api/defects; HttpOnly; SameSite=Strict; Max-Age=43200{secure}"
+
+
+def require_search_session(handler):
+    if not os.environ.get("APP_LOGIN_PASSWORD"):
+        return
+    cookie = SimpleCookie()
+    try:
+        cookie.load(handler.headers.get("Cookie", ""))
+        value = cookie.get("qa_search_session")
+        with SEARCH_SESSIONS_LOCK:
+            valid = value and SEARCH_SESSIONS.get(value.value, 0) > time.time()
+    except Exception:
+        valid = False
+    if not valid:
+        raise UserFacingError("로그인 후 결함 검색을 사용해 주세요.", 401)
+
+
 class AppHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1853,6 +1899,26 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path in {"/api/defects/search", "/api/defects/status"}:
+            try:
+                require_search_session(self)
+                service = get_defect_search()
+                if path.endswith("/status"):
+                    result = service.status()
+                else:
+                    params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                    value = lambda key, default="": params.get(key, [default])[0]
+                    result = service.search(value("q"),
+                        {k: value(k) for k in ("platform", "severity", "status", "target_version", "date_from", "date_to")},
+                        offset=int(value("offset", "0")), limit=int(value("limit", "20")), debug=value("debug") == "1")
+                json_response(self, 200, {"ok": True, **result})
+            except UserFacingError as exc:
+                json_response(self, exc.status, {"ok": False, "message": exc.message})
+            except ValueError as exc:
+                json_response(self, 400, {"ok": False, "message": str(exc) if not str(exc).startswith("invalid literal") else "결과 범위가 올바르지 않습니다."})
+            except Exception:
+                json_response(self, 500, {"ok": False, "message": "검색 처리 중 오류가 발생했습니다."})
+            return
         if path.startswith("/api/embed-jobs/"):
             try:
                 result = get_embed_job(path.removeprefix("/api/embed-jobs/"))
@@ -1958,10 +2024,16 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             payload = read_json_body(self)
+            response_headers = {}
             if self.path == "/api/analyze":
                 result = analyze_ticket(payload)
             elif self.path == "/api/login":
                 result = login(payload)
+                response_headers["Set-Cookie"] = search_session_cookie()
+            elif self.path == "/api/defects/refresh":
+                require_search_session(self)
+                service = get_defect_search()
+                result = {"started": service.start_refresh(), "index": service.status()}
             elif self.path == "/api/register-summary":
                 result = register_summary(payload)
             elif self.path == "/api/generate-tc":
@@ -1991,7 +2063,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = pixel_page_check(payload)
             else:
                 raise UserFacingError("지원하지 않는 요청입니다.", 404)
-            json_response(self, 200, {"ok": True, **result})
+            json_response(self, 200, {"ok": True, **result}, response_headers)
         except UserFacingError as exc:
             json_response(self, exc.status, {"ok": False, "message": exc.message, **exc.extra})
         except Exception:
@@ -2046,6 +2118,9 @@ class AppHandler(BaseHTTPRequestHandler):
         return "text/plain; charset=utf-8"
 
     def log_message(self, fmt, *args):
+        if self.path.startswith("/api/defects/search"):
+            print(f"[Web] {self.address_string()} {self.command} /api/defects/search", file=sys.stderr)
+            return
         print(f"[Web] {self.address_string()} {fmt % args}", file=sys.stderr)
 
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QA Support Hub</title>
-    <link rel="stylesheet" href="/styles.css?v=defect-dashboard-tab-20260820-1" />
+    <link rel="stylesheet" href="/styles.css?v=defect-search-20261016-1" />
   </head>
   <body>
     <section id="loadingView" class="loading-view" aria-label="로딩 화면">
@@ -44,6 +44,7 @@
         <button id="pixelTab" class="tab" type="button" data-tab="pixel">PixelAudit</button>
         <button id="localizationTab" class="tab" type="button" data-tab="localization">다국어 검증</button>
         <button id="defectDashboardTab" class="tab" type="button" data-tab="defectDashboard">결함 대시보드</button>
+        <button id="defectSearchTab" class="tab" type="button" data-tab="defectSearch">결함 검색</button>
       </nav>
 
       <div id="ticketView" class="tab-view">
@@ -418,6 +419,27 @@
           </article>
         </section>
       </div>
+      <div id="defectSearchView" class="tab-view hidden">
+        <section class="panel defect-search-hero">
+          <div class="panel-head"><div><p class="meta">QA KNOWLEDGE SEARCH</p><h2>기억나는 현상으로 결함을 찾아보세요</h2><p>제목을 몰라도 화면명, 기능, OS와 현상을 함께 입력하세요.</p></div><button id="searchRefresh" class="ghost" type="button">Notion 색인 갱신</button></div>
+          <form id="defectSearchForm" class="url-row" role="search"><label for="defectQuery" class="search-sr-only">결함 통합 검색</label><input id="defectQuery" type="search" maxlength="500" autocomplete="off" placeholder="결함 제목, 현상, 화면명, 키워드로 검색하세요"><button id="defectSearchSubmit" class="primary" type="submit">검색</button></form>
+          <div id="searchHistory" class="search-history" aria-label="최근 검색"></div>
+          <div class="search-filters">
+            <label>OS<select id="searchPlatform"><option value="">전체 OS</option></select></label>
+            <label>심각도<select id="searchSeverity"><option value="">전체 심각도</option></select></label>
+            <label>상태<select id="searchStatus"><option value="">전체 상태</option></select></label>
+            <label>목표버전<select id="searchVersion"><option value="">전체 버전</option></select></label>
+            <label>등록 시작일<input id="searchDateFrom" type="date"></label><label>등록 종료일<input id="searchDateTo" type="date"></label>
+            <button id="searchReset" type="button" class="ghost">필터 초기화</button>
+          </div>
+          <p class="meta">일치율은 검색 관련도 점수이며 정답 확률이 아닙니다. 앱 연결은 브라우저와 Notion 설정에 따라 달라질 수 있습니다.</p>
+          <p id="searchIndexStatus" class="meta" role="status" aria-live="polite"></p>
+        </section>
+        <section class="panel search-results-panel" aria-labelledby="searchResultTitle">
+          <h2 id="searchResultTitle">통합 검색</h2><p id="searchMessage" role="status" aria-live="polite">예: AOS 비밀번호 바꾸고 로그인하면 튕김</p>
+          <div id="searchResults"></div><button id="searchMore" class="ghost hidden" type="button">더 보기</button>
+        </section>
+      </div>
     </main>
     <div id="workOverlay" class="work-overlay hidden" role="status" aria-live="polite" aria-atomic="true">
       <div class="work-card">
@@ -431,6 +453,7 @@
         <span id="workProgressBar"></span>
       </div>
     </div>
-    <script src="/app.js?v=embed-jobs-20261013-1"></script>
+    <script src="/defect-search.js?v=20261016-1"></script>
+    <script src="/app.js?v=defect-search-20261016-1"></script>
   </body>
 </html>

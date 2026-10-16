@@ -181,3 +181,11 @@ GitHub가 자동 생성한 `Deploy static content to Pages` workflow를 쓰는 �
 - Gemini 호출은 `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_API_KEY`, `GEMINI_API_KEY_2` 조합을 순차 시도합니다.
 - 모든 모델/키 조합에서 Gemini 429가 발생하면 `RetryInfo` 또는 `Retry-After` 기준으로 분석 기능을 일시 중지하고, 이 시간 동안 추가 Gemini 호출을 차단합니다.
 - 민감정보는 코드에 하드코딩하지 않고 환경변수에서만 읽습니다.
+
+## Notion 통합 결함 검색 (2026-10-16)
+
+기존 실행 방법(`python3 app.py`)으로 앱에 접속하고 상단 **결함 검색**을 선택합니다. 기존 `.env`의 `NOTION_TOKEN`을 사용하며 검색에는 Gemini 키가 필요하지 않습니다. 첫 검색 또는 **Notion 색인 갱신**으로 수집을 시작합니다. 제목·속성을 먼저 검색할 수 있고, 본문 색인 생성 진행 상황을 표시합니다.
+
+QA 동의어, 자연어 핵심어, 부분 문자열, 오타 및 TF-IDF 유사도를 결합해 관련도 순으로 표시합니다. OS/심각도/상태/목표버전/등록 기간 필터, 검색 근거와 하이라이트, 최근 검색, 20건씩 더 보기, Notion 앱 연결 및 웹 fallback을 제공합니다.
+
+동의어는 `config/search_synonyms.json`에서 수정 후 재시작합니다. 설정 예시는 `.env.example`, 변경 파일/아키텍처/점수 계산/실제 DB 분석/테스트 및 제약은 [구현 보고서](docs/defect-search-implementation.md)를 참고하세요. 로컬 `data/` 색인은 Git에서 제외되며 서버만 접근합니다. 전체 본문 최초 수집은 Notion API 호출량에 따라 시간이 걸립니다.
