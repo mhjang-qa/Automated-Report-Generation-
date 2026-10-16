@@ -1,0 +1,21 @@
+{
+  "python_tests": 45,
+  "python_passed": 45,
+  "existing_regression_tests": 15,
+  "landing_scenarios": 6,
+  "landing_passed": 6,
+  "javascript_syntax": "passed",
+  "browser_checks": [
+    "natural language results",
+    "match reasons",
+    "OS filtering",
+    "no results guidance",
+    "existing ticket tab",
+    "existing embed tab"
+  ],
+  "live_database_pages": 1972,
+  "live_sample_documents": 10,
+  "live_exact_title_100_score": 10,
+  "os_native_app_launch": "not verified on physical macOS/Windows",
+  "full_corpus_body_index": "not generated; starts from app"
+}

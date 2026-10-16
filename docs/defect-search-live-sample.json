@@ -1,0 +1,67 @@
+{
+  "note": "Final table-aware collector validation, read-only live samples.",
+  "samples": [
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 42
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 42
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 35
+    }
+  ]
+}

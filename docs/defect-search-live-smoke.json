@@ -1,0 +1,244 @@
+{
+  "sample_size": 10,
+  "exact_title_100_score_count": 10,
+  "natural_language_smoke": [
+    {
+      "query": "비밀번호 변경하고 로그인하면 튕김",
+      "hits_in_sample": 6,
+      "top_score": 74.6,
+      "duration_ms": 10.71
+    },
+    {
+      "query": "홈에서 내역관리 안들어가짐",
+      "hits_in_sample": 4,
+      "top_score": 49.0,
+      "duration_ms": 17.8
+    },
+    {
+      "query": "AOS BS 닫으면 홈으로 감",
+      "hits_in_sample": 7,
+      "top_score": 37.3,
+      "duration_ms": 16.31
+    },
+    {
+      "query": "QR 결제 다국어 안나옴",
+      "hits_in_sample": 4,
+      "top_score": 40.8,
+      "duration_ms": 17.22
+    },
+    {
+      "query": "아이폰 뒤로가기 안됨",
+      "hits_in_sample": 2,
+      "top_score": 43.7,
+      "duration_ms": 17.72
+    }
+  ],
+  "structure": [
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 42
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 42
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 35
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 35
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 44
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 42
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 44
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 43
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "platform": "제목에서 추출 (OS 속성 없음)",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 44
+    },
+    {
+      "mapped_fields": {
+        "status": "상태",
+        "severity": "심각도",
+        "priority": "우선순위",
+        "target_version": "목표버전",
+        "screen": "ATM",
+        "assignee": "조치 담당자",
+        "created_at": "생성 일시",
+        "title": "결함 제목"
+      },
+      "section_types": [
+        "actual",
+        "body",
+        "environment",
+        "expected",
+        "steps"
+      ],
+      "blocks": 45
+    }
+  ],
+  "note": "Live subset smoke test, not a labeled precision/recall evaluation. Full corpus not indexed during this validation."
+}

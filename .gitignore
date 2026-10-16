@@ -6,3 +6,6 @@ __pycache__/
 venv/
 node_modules/
 notion-daily-defect-dashboard/
+
+# Local Notion corpus and search index
+data/

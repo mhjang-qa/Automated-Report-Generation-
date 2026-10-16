@@ -1,0 +1,40 @@
+{
+  "verified": true,
+  "database_id": "21473fbd-1951-800d-8321-fc2e34c2548e",
+  "page_count": 1972,
+  "properties": {
+    "운영 테스트 일자": "date",
+    "등록자": "people",
+    "관련된 이슈": "relation",
+    "심각도": "select",
+    "최종 편집자": "last_edited_by",
+    "ATM": "relation",
+    "조치 담당자": "people",
+    "목표버전": "select",
+    "우선순위": "status",
+    "Hanpass - Bug Report Inbox": "relation",
+    "상태": "status",
+    "Go.Hanpass - Bug Report Inbox": "relation",
+    "결함 유형": "select",
+    "생성 일시": "created_time",
+    "생성일시": "created_time",
+    "ID": "unique_id",
+    "관찰자": "people",
+    "결함 제목": "title"
+  },
+  "field_mapping": {
+    "status": "상태",
+    "severity": "심각도",
+    "priority": "우선순위",
+    "target_version": "목표버전",
+    "platform": "제목에서 추출 (OS 속성 없음)",
+    "screen": "ATM",
+    "actual": null,
+    "expected": null,
+    "steps": null,
+    "environment": null,
+    "assignee": "조치 담당자",
+    "created_at": "생성 일시",
+    "updated_at": null
+  }
+}
