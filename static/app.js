@@ -343,6 +343,10 @@ async function loadDefectDashboard(force = false) {
 async function warmUpDefectDashboard() {
   const token = Date.now();
   state.defectDashboardWarmupToken = token;
+  const dashboardUrl = new URL(state.defectDashboardUrl);
+  dashboardUrl.searchParams.set("_refresh", String(token));
+  const targetUrl = dashboardUrl.toString();
+  el.defectDashboardOpenBtn.href = targetUrl;
   el.defectDashboardFrame.src = `/logding/?target=defect-dashboard&ts=${Date.now()}`;
   showDefectDashboardMessage("결함 대시보드 서버를 깨우는 중입니다. 잠시만 기다려 주세요.", "warning");
   const healthUrl = new URL("/api/health", state.defectDashboardUrl).toString();
@@ -355,7 +359,7 @@ async function warmUpDefectDashboard() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && String(data.status || "").toLowerCase() === "ok") {
         if (state.defectDashboardWarmupToken !== token) return;
-        el.defectDashboardFrame.src = state.defectDashboardUrl;
+        el.defectDashboardFrame.src = targetUrl;
         showDefectDashboardMessage(`연결 URL: ${state.defectDashboardUrl}`, "success");
         return;
       }
@@ -365,7 +369,7 @@ async function warmUpDefectDashboard() {
     await new Promise((resolve) => setTimeout(resolve, FLOOR_RISE_LOADING_DURATION_MS));
   }
   if (state.defectDashboardWarmupToken !== token) return;
-  el.defectDashboardFrame.src = state.defectDashboardUrl;
+  el.defectDashboardFrame.src = targetUrl;
   showDefectDashboardMessage("서버 응답이 지연되어 iframe에서 계속 로딩합니다.", "warning");
 }
 
