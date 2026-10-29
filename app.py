@@ -279,12 +279,15 @@ def extract_notion_id(url):
     if "notion." not in host and "notion.site" not in host:
         raise UserFacingError("올바른 노션 링크를 입력해 주세요.", 400)
 
-    candidates = re.findall(r"(?i)([0-9a-f]{32})", parsed.path + parsed.query)
-    if not candidates:
-        candidates = re.findall(
-            r"(?i)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
-            parsed.path + parsed.query,
-        )
+    # A database link may explicitly open a page with p=. v= identifies a view,
+    # not a page, and must never override the page ID in the URL path.
+    query = urllib.parse.parse_qs(parsed.query)
+    if query.get("p"):
+        return normalize_uuid(query["p"][-1])
+    candidates = re.findall(
+        r"(?i)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})",
+        parsed.path,
+    )
     if not candidates:
         raise UserFacingError("노션 페이지 ID를 링크에서 찾을 수 없습니다.", 400)
     return normalize_uuid(candidates[-1])
